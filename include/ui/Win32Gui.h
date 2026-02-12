@@ -1,12 +1,11 @@
 #pragma once
 
+#include <Windows.h>
 #include "game/Civilization.h"
 #include "game/EventSystem.h"
 #include "game/SaveSystem.h"
-#include <Windows.h>
 #include <string>
 #include <memory>
-#include <vector>
 
 namespace civ {
 
@@ -16,15 +15,15 @@ constexpr LPCWSTR WINDOW_TITLE = L"Симулятор Эволюции Циви�
 constexpr int WINDOW_WIDTH = 1100;
 constexpr int WINDOW_HEIGHT = 700;
 
-// Control IDs
+// Control IDs (avoiding Windows IDC_* macros)
 enum {
-    IDC_NEXT_TURN = 1001,
-    IDC_INVEST,
-    IDC_RESEARCH,
-    IDC_SAVE,
-    IDC_LOAD,
-    IDC_HELP,
-    IDC_QUIT,
+    IDC_BTN_NEXT = 1001,
+    IDC_BTN_INVEST,
+    IDC_BTN_RESEARCH,
+    IDC_BTN_SAVE,
+    IDC_BTN_LOAD,
+    IDC_BTN_HELP,
+    IDC_BTN_QUIT,
     IDC_LIST_TECHS,
 };
 
@@ -49,7 +48,7 @@ private:
     void onResearch();
     void onSave();
     void onLoad();
-    void onHelp();
+    void onHelpBtn();
     void onQuit();
     void onTechSelect();
     

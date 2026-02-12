@@ -4,11 +4,19 @@
 #include <commctrl.h>
 #include <string>
 #include <sstream>
-#include <iomanip>
 
 #pragma comment(lib, "comctl32.lib")
 
 namespace civ {
+
+// Colors for UI elements
+const COLORREF BG_COLOR = RGB(240, 242, 245);
+const COLORREF PANEL_BG = RGB(255, 255, 255);
+const COLORREF ACCENT_BLUE = RGB(52, 152, 219);
+const COLORREF ACCENT_GREEN = RGB(46, 204, 113);
+const COLORREF ACCENT_RED = RGB(231, 76, 60);
+const COLORREF ACCENT_ORANGE = RGB(241, 196, 15);
+const COLORREF ACCENT_PURPLE = RGB(155, 89, 182);
 
 Win32Gui::Win32Gui()
     : m_hInstance(nullptr)
@@ -37,20 +45,19 @@ int Win32Gui::run(HINSTANCE hInstance, int nCmdShow) {
     m_hInstance = hInstance;
 
     INITCOMMONCONTROLSEX icex;
-    icex.dwICC = ICC_LISTVIEW_CLASSES | ICC_PROGRESS_CLASS;
+    icex.dwICC = ICC_PROGRESS_CLASS | ICC_LISTVIEW_CLASSES;
     InitCommonControlsEx(&icex);
 
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(WNDCLASSEXW);
     wc.lpfnWndProc = StaticWndProc;
     wc.hInstance = hInstance;
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hCursor = LoadCursor(nullptr, IDC_HAND);
+    wc.hbrBackground = CreateSolidBrush(BG_COLOR);
     wc.lpszClassName = CLASS_NAME;
     wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
 
     if (!RegisterClassExW(&wc)) {
-        MessageBoxW(nullptr, L"Ошибка регистрации окна", L"Ошибка", MB_OK | MB_ICONERROR);
         return 1;
     }
 
@@ -63,7 +70,6 @@ int Win32Gui::run(HINSTANCE hInstance, int nCmdShow) {
     );
 
     if (!m_mainWindow) {
-        MessageBoxW(nullptr, L"Ошибка создания окна", L"Ошибка", MB_OK | MB_ICONERROR);
         return 1;
     }
 
@@ -82,302 +88,363 @@ int Win32Gui::run(HINSTANCE hInstance, int nCmdShow) {
 }
 
 void Win32Gui::createControls() {
-    HFONT hFont = CreateFontW(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
-                                CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-                                VARIABLE_PITCH, L"Segoe UI");
-    HFONT hBoldFont = CreateFontW(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    HFONT hTitleFont = CreateFontW(26, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                                    DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
+                                    CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                                    VARIABLE_PITCH, L"Segoe UI");
+    HFONT hHeaderFont = CreateFontW(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                                    DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
+                                    CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                                    VARIABLE_PITCH, L"Segoe UI");
+    HFONT hLabelFont = CreateFontW(15, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                    DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
                                    CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                    VARIABLE_PITCH, L"Segoe UI");
-    HFONT hTitleFont = CreateFontW(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    HFONT hValueFont = CreateFontW(15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                     DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
                                     CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-                                    VARIABLE_PITCH, L"Segoe UI");
-    HFONT hSmallFont = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                    DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
-                                    CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-                                    VARIABLE_PITCH, L"Segoe UI");
+                                    VARIABLE_PITCH, L"Consolas");
+    HFONT hBtnFont = CreateFontW(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                                   DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
+                                   CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                                   VARIABLE_PITCH, L"Segoe UI");
 
     int x = 20, y = 20;
 
-    // Title
-    HWND hTitle = CreateWindowW(L"STATIC", L"СИМУЛЯТОР ЭВОЛЮЦИИ ЦИВИЛИЗАЦИИ",
-                                 WS_VISIBLE | SS_LEFT, x, y, 500, 40,
+    // ===== TITLE =====
+    HWND hTitle = CreateWindowW(L"STATIC", L"🏛️ СИМУЛЯТОР ЦИВИЛИЗАЦИИ",
+                                 WS_VISIBLE | SS_LEFT, x, y, 400, 40,
                                  m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(hTitle, WM_SETFONT, (WPARAM)hTitleFont, 0);
     y += 50;
 
-    // Era and Turn info
-    m_eraLabel = CreateWindowW(L"STATIC", L"Эпоха: Каменный век",
-                                WS_VISIBLE | SS_LEFT, x, y, 300, 25,
+    // Era and Turn on the right
+    m_eraLabel = CreateWindowW(L"STATIC", L"Каменный век",
+                                WS_VISIBLE | SS_LEFT, 650, y, 400, 30,
                                 m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_eraLabel, WM_SETFONT, (WPARAM)hBoldFont, 0);
-    y += 30;
-
-    m_turnLabel = CreateWindowW(L"STATIC", L"Ход: 0",
-                                WS_VISIBLE | SS_LEFT, x, y, 200, 20,
-                                m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_turnLabel, WM_SETFONT, (WPARAM)hFont, 0);
+    SendMessageW(m_eraLabel, WM_SETFONT, (WPARAM)hHeaderFont, 0);
     y += 35;
 
-    // ===== LEFT PANEL - Stats =====
-    int panelX = x;
+    m_turnLabel = CreateWindowW(L"STATIC", L"Ход: 0",
+                                WS_VISIBLE | SS_LEFT, 650, y + 5, 200, 22,
+                                m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(m_turnLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
+    y += 40;
+
+    // ===== TOP ROW: Stats Panels =====
+    int panelY = y;
+    int panelW = 250;
+    int panelH = 180;
+    int panelGap = 20;
+
+    // ===== POPULATION PANEL =====
+    HWND hPopBg = CreateWindowW(L"STATIC", nullptr,
+                                 WS_VISIBLE | SS_LEFT | WS_BORDER,
+                                 x, panelY, panelW, panelH,
+                                 m_mainWindow, nullptr, m_hInstance, nullptr);
     
-    // Population
-    HWND hPopTitle = CreateWindowW(L"STATIC", L"Население",
-                                     WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
-                                     m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hPopTitle, WM_SETFONT, (WPARAM)hFont, 0);
-    y += 20;
-    
+    HWND hPopTitle = CreateWindowW(L"STATIC", L"👥 НАСЕЛЕНИЕ",
+                                    WS_VISIBLE | SS_LEFT, x + 10, panelY + 10, 230, 25,
+                                    m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hPopTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
+
     m_populationLabel = CreateWindowW(L"STATIC", L"1 000",
-                                       WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
+                                       WS_VISIBLE | SS_LEFT | SS_CENTER, x + 10, panelY + 45, 230, 30,
                                        m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_populationLabel, WM_SETFONT, (WPARAM)hSmallFont, 0);
-    y += 20;
-    
+    SendMessageW(m_populationLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
+
     m_populationBar = CreateWindowW(PROGRESS_CLASSW, nullptr,
-                                     WS_VISIBLE | PBS_SMOOTH, panelX, y, 250, 18,
+                                     WS_VISIBLE | PBS_SMOOTH, x + 15, panelY + 85, 220, 20,
                                      m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_populationBar, PBM_SETRANGE, 0, MAKELPARAM(0, 10000));
     SendMessageW(m_populationBar, PBM_SETPOS, 1000, 0);
-    y += 30;
 
-    // Happiness
-    HWND hHappyTitle = CreateWindowW(L"STATIC", L"Счастье",
-                                      WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
+    HWND hPopDesc = CreateWindowW(L"STATIC", L"Рост зависит от счастья",
+                                    WS_VISIBLE | SS_LEFT | SS_CENTER, x + 10, panelY + 115, 230, 20,
+                                    m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hPopDesc, WM_SETFONT, (WPARAM)hValueFont, 0);
+
+    // ===== HAPPINESS PANEL =====
+    x += panelW + panelGap;
+    HWND hHappyBg = CreateWindowW(L"STATIC", nullptr,
+                                   WS_VISIBLE | SS_LEFT | WS_BORDER,
+                                   x, panelY, panelW, panelH,
+                                   m_mainWindow, nullptr, m_hInstance, nullptr);
+
+    HWND hHappyTitle = CreateWindowW(L"STATIC", L"😊 СЧАСТЬЕ",
+                                      WS_VISIBLE | SS_LEFT, x + 10, panelY + 10, 230, 25,
                                       m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hHappyTitle, WM_SETFONT, (WPARAM)hFont, 0);
-    y += 20;
-    
+    SendMessageW(hHappyTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
+
     m_happinessLabel = CreateWindowW(L"STATIC", L"70%",
-                                      WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
+                                      WS_VISIBLE | SS_LEFT | SS_CENTER, x + 10, panelY + 45, 230, 30,
                                       m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_happinessLabel, WM_SETFONT, (WPARAM)hSmallFont, 0);
-    y += 20;
-    
+    SendMessageW(m_happinessLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
+
     m_happinessBar = CreateWindowW(PROGRESS_CLASSW, nullptr,
-                                    WS_VISIBLE | PBS_SMOOTH, panelX, y, 250, 18,
+                                    WS_VISIBLE | PBS_SMOOTH, x + 15, panelY + 85, 220, 20,
                                     m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_happinessBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
     SendMessageW(m_happinessBar, PBM_SETPOS, 70, 0);
-    y += 30;
 
-    // Ecology
-    HWND hEcoTitle = CreateWindowW(L"STATIC", L"Экология",
-                                    WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
-                                    m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hEcoTitle, WM_SETFONT, (WPARAM)hFont, 0);
-    y += 20;
-    
+    HWND hHappyDesc = CreateWindowW(L"STATIC", L"Влияет на рост населения",
+                                     WS_VISIBLE | SS_LEFT | SS_CENTER, x + 10, panelY + 115, 230, 20,
+                                     m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hHappyDesc, WM_SETFONT, (WPARAM)hValueFont, 0);
+
+    // ===== ECOLOGY PANEL =====
+    x += panelW + panelGap;
+    HWND hEcoBg = CreateWindowW(L"STATIC", nullptr,
+                                 WS_VISIBLE | SS_LEFT | WS_BORDER,
+                                 x, panelY, panelW, panelH,
+                                 m_mainWindow, nullptr, m_hInstance, nullptr);
+
+    HWND hEcoTitle = CreateWindowW(L"STATIC", L"🌿 ЭКОЛОГИЯ",
+                                   WS_VISIBLE | SS_LEFT, x + 10, panelY + 10, 230, 25,
+                                   m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hEcoTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
+
     m_ecologyLabel = CreateWindowW(L"STATIC", L"90%",
-                                    WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
-                                    m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_ecologyLabel, WM_SETFONT, (WPARAM)hSmallFont, 0);
-    y += 20;
-    
+                                   WS_VISIBLE | SS_LEFT | SS_CENTER, x + 10, panelY + 45, 230, 30,
+                                   m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(m_ecologyLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
+
     m_ecologyBar = CreateWindowW(PROGRESS_CLASSW, nullptr,
-                                  WS_VISIBLE | PBS_SMOOTH, panelX, y, 250, 18,
+                                  WS_VISIBLE | PBS_SMOOTH, x + 15, panelY + 85, 220, 20,
                                   m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_ecologyBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
     SendMessageW(m_ecologyBar, PBM_SETPOS, 90, 0);
-    y += 30;
 
-    // Military
-    HWND hMilTitle = CreateWindowW(L"STATIC", L"Армия",
-                                    WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
+    HWND hEcoDesc = CreateWindowW(L"STATIC", L"Ниже 5% = поражение",
+                                   WS_VISIBLE | SS_LEFT | SS_CENTER, x + 10, panelY + 115, 230, 20,
+                                   m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hEcoDesc, WM_SETFONT, (WPARAM)hValueFont, 0);
+
+    // ===== MILITARY PANEL =====
+    x += panelW + panelGap;
+    HWND hMilBg = CreateWindowW(L"STATIC", nullptr,
+                                 WS_VISIBLE | SS_LEFT | WS_BORDER,
+                                 x, panelY, panelW, panelH,
+                                 m_mainWindow, nullptr, m_hInstance, nullptr);
+
+    HWND hMilTitle = CreateWindowW(L"STATIC", L"⚔️ АРМИЯ",
+                                    WS_VISIBLE | SS_LEFT, x + 10, panelY + 10, 230, 25,
                                     m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hMilTitle, WM_SETFONT, (WPARAM)hFont, 0);
-    y += 20;
-    
+    SendMessageW(hMilTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
+
     m_militaryLabel = CreateWindowW(L"STATIC", L"10",
-                                     WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
-                                     m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_militaryLabel, WM_SETFONT, (WPARAM)hSmallFont, 0);
-    y += 20;
-    
+                                    WS_VISIBLE | SS_LEFT | SS_CENTER, x + 10, panelY + 45, 230, 30,
+                                    m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(m_militaryLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
+
     m_militaryBar = CreateWindowW(PROGRESS_CLASSW, nullptr,
-                                   WS_VISIBLE | PBS_SMOOTH, panelX, y, 250, 18,
+                                   WS_VISIBLE | PBS_SMOOTH, x + 15, panelY + 85, 220, 20,
                                    m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_militaryBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
     SendMessageW(m_militaryBar, PBM_SETPOS, 10, 0);
-    y += 30;
 
-    // Economy
-    HWND hEconTitle = CreateWindowW(L"STATIC", L"Экономика",
-                                     WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
-                                     m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hEconTitle, WM_SETFONT, (WPARAM)hFont, 0);
-    y += 20;
-    
-    m_economyLabel = CreateWindowW(L"STATIC", L"100",
-                                    WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
-                                    m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_economyLabel, WM_SETFONT, (WPARAM)hSmallFont, 0);
-    y += 20;
-    
-    m_economyBar = CreateWindowW(PROGRESS_CLASSW, nullptr,
-                                  WS_VISIBLE | PBS_SMOOTH, panelX, y, 250, 18,
+    HWND hMilDesc = CreateWindowW(L"STATIC", L"Защищает от войн",
+                                   WS_VISIBLE | SS_LEFT | SS_CENTER, x + 10, panelY + 115, 230, 20,
+                                   m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hMilDesc, WM_SETFONT, (WPARAM)hValueFont, 0);
+
+    // ===== TECHNOLOGY PANEL =====
+    x += panelW + panelGap;
+    HWND hTechBg = CreateWindowW(L"STATIC", nullptr,
+                                  WS_VISIBLE | SS_LEFT | WS_BORDER,
+                                  x, panelY, panelW, panelH,
                                   m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_economyBar, PBM_SETRANGE, 0, MAKELPARAM(0, 1000));
-    SendMessageW(m_economyBar, PBM_SETPOS, 100, 0);
-    y += 30;
 
-    // Technology
-    HWND hTechTitle = CreateWindowW(L"STATIC", L"Технологии",
-                                    WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
-                                    m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hTechTitle, WM_SETFONT, (WPARAM)hFont, 0);
-    y += 20;
-    
-    m_techLevelLabel = CreateWindowW(L"STATIC", L"Уровень: 0",
-                                      WS_VISIBLE | SS_LEFT, panelX, y, 150, 20,
-                                      m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_techLevelLabel, WM_SETFONT, (WPARAM)hSmallFont, 0);
-    y += 20;
-    
-    m_techProgressBar = CreateWindowW(PROGRESS_CLASSW, nullptr,
-                                       WS_VISIBLE | PBS_SMOOTH, panelX, y, 250, 18,
-                                       m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_techProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
-    SendMessageW(m_techProgressBar, PBM_SETPOS, 0, 0);
-    y += 40;
+    HWND hTechTitle = CreateWindowW(L"STATIC", L"🔬 ТЕХНОЛОГИИ",
+                                     WS_VISIBLE | SS_LEFT, x + 10, panelY + 10, 230, 25,
+                                     m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hTechTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
 
-    // ===== RIGHT PANEL - Resources =====
-    x = 320;
-    y = 100;
-    
-    HWND hResTitle = CreateWindowW(L"STATIC", L"══════ РЕСУРСЫ ══════",
-                                    WS_VISIBLE | SS_LEFT, x, y, 250, 25,
+    m_techLabel = CreateWindowW(L"STATIC", L"Уровень: 0/100",
+                                WS_VISIBLE | SS_LEFT | SS_CENTER, x + 10, panelY + 45, 230, 30,
+                                m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(m_techLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
+
+    m_techBar = CreateWindowW(PROGRESS_CLASSW, nullptr,
+                               WS_VISIBLE | PBS_SMOOTH, x + 15, panelY + 85, 220, 20,
+                               m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(m_techBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+    SendMessageW(m_techBar, PBM_SETPOS, 0, 0);
+
+    HWND hTechDesc = CreateWindowW(L"STATIC", L"100 = победа!",
+                                    WS_VISIBLE | SS_LEFT | SS_CENTER, x + 10, panelY + 115, 230, 20,
                                     m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hResTitle, WM_SETFONT, (WPARAM)hBoldFont, 0);
-    y += 35;
+    SendMessageW(hTechDesc, WM_SETFONT, (WPARAM)hValueFont, 0);
+
+    // ===== MIDDLE ROW: Resources and Tech =====
+    y = panelY + panelH + 25;
+    x = 20;
+
+    // ===== RESOURCES PANEL =====
+    HWND hResBg = CreateWindowW(L"STATIC", nullptr,
+                                 WS_VISIBLE | SS_LEFT | WS_BORDER,
+                                 x, y, 350, 180,
+                                 m_mainWindow, nullptr, m_hInstance, nullptr);
+
+    HWND hResTitle = CreateWindowW(L"STATIC", L"💰 РЕСУРСЫ",
+                                    WS_VISIBLE | SS_LEFT, x + 15, y + 12, 320, 28,
+                                    m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hResTitle, WM_SETFONT, (WPARAM)hHeaderFont, 0);
+    y += 45;
 
     // Food
-    HWND hFoodTitle = CreateWindowW(L"STATIC", L"  Еда",
-                                     WS_VISIBLE | SS_LEFT, x, y, 150, 22,
+    HWND hFoodIcon = CreateWindowW(L"STATIC", L"🍖",
+                                    WS_VISIBLE | SS_LEFT, x + 20, y, 40, 30,
+                                    m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hFoodIcon, WM_SETFONT, (WPARAM)hValueFont, 0);
+    HWND hFoodTitle = CreateWindowW(L"STATIC", L"Еда",
+                                     WS_VISIBLE | SS_LEFT, x + 60, y + 5, 80, 25,
                                      m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hFoodTitle, WM_SETFONT, (WPARAM)hFont, 0);
+    SendMessageW(hFoodTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
     m_foodLabel = CreateWindowW(L"STATIC", L"100",
-                                 WS_VISIBLE | SS_RIGHT, x + 160, y, 100, 22,
+                                 WS_VISIBLE | SS_RIGHT, x + 150, y, 160, 25,
                                  m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_foodLabel, WM_SETFONT, (WPARAM)hFont, 0);
-    y += 30;
+    SendMessageW(m_foodLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
+    y += 35;
 
     // Money
-    HWND hMoneyTitle = CreateWindowW(L"STATIC", L"  Деньги",
-                                      WS_VISIBLE | SS_LEFT, x, y, 150, 22,
-                                      m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hMoneyTitle, WM_SETFONT, (WPARAM)hFont, 0);
+    HWND hMoneyIcon = CreateWindowW(L"STATIC", L"💵",
+                                     WS_VISIBLE | SS_LEFT, x + 20, y, 40, 30,
+                                     m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hMoneyIcon, WM_SETFONT, (WPARAM)hValueFont, 0);
+    HWND hMoneyTitle = CreateWindowW(L"STATIC", L"Деньги",
+                                     WS_VISIBLE | SS_LEFT, x + 60, y + 5, 80, 25,
+                                     m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hMoneyTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
     m_moneyLabel = CreateWindowW(L"STATIC", L"500",
-                                 WS_VISIBLE | SS_RIGHT, x + 160, y, 100, 22,
-                                 m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_moneyLabel, WM_SETFONT, (WPARAM)hFont, 0);
-    y += 30;
+                                  WS_VISIBLE | SS_RIGHT, x + 150, y, 160, 25,
+                                  m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(m_moneyLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
+    y += 35;
 
     // Energy
-    HWND hEnergyTitle = CreateWindowW(L"STATIC", L"  Энергия",
-                                      WS_VISIBLE | SS_LEFT, x, y, 150, 22,
+    HWND hEnergyIcon = CreateWindowW(L"STATIC", L"⚡",
+                                      WS_VISIBLE | SS_LEFT, x + 20, y, 40, 30,
                                       m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hEnergyTitle, WM_SETFONT, (WPARAM)hFont, 0);
+    SendMessageW(hEnergyIcon, WM_SETFONT, (WPARAM)hValueFont, 0);
+    HWND hEnergyTitle = CreateWindowW(L"STATIC", L"Энергия",
+                                       WS_VISIBLE | SS_LEFT, x + 60, y + 5, 80, 25,
+                                       m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hEnergyTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
     m_energyLabel = CreateWindowW(L"STATIC", L"50",
-                                  WS_VISIBLE | SS_RIGHT, x + 160, y, 100, 22,
+                                  WS_VISIBLE | SS_RIGHT, x + 150, y, 160, 25,
                                   m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_energyLabel, WM_SETFONT, (WPARAM)hFont, 0);
-    y += 30;
+    SendMessageW(m_energyLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
+    y += 35;
 
     // Materials
-    HWND hMatTitle = CreateWindowW(L"STATIC", L"  Материалы",
-                                    WS_VISIBLE | SS_LEFT, x, y, 150, 22,
+    HWND hMatIcon = CreateWindowW(L"STATIC", L"🔩",
+                                    WS_VISIBLE | SS_LEFT, x + 20, y, 40, 30,
                                     m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hMatTitle, WM_SETFONT, (WPARAM)hFont, 0);
+    SendMessageW(hMatIcon, WM_SETFONT, (WPARAM)hValueFont, 0);
+    HWND hMatTitle = CreateWindowW(L"STATIC", L"Материалы",
+                                    WS_VISIBLE | SS_LEFT, x + 60, y + 5, 80, 25,
+                                    m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hMatTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
     m_materialsLabel = CreateWindowW(L"STATIC", L"100",
-                                      WS_VISIBLE | SS_RIGHT, x + 160, y, 100, 22,
+                                      WS_VISIBLE | SS_RIGHT, x + 150, y, 160, 25,
                                       m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(m_materialsLabel, WM_SETFONT, (WPARAM)hFont, 0);
-    y += 50;
+    SendMessageW(m_materialsLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
-    // ===== Technology Panel =====
-    HWND hTechPanelTitle = CreateWindowW(L"STATIC", L"══════ ТЕХНОЛОГИИ ══════",
-                                          WS_VISIBLE | SS_LEFT, x, y, 250, 25,
-                                          m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hTechPanelTitle, WM_SETFONT, (WPARAM)hBoldFont, 0);
-    y += 35;
+    // ===== TECHNOLOGY LIST PANEL =====
+    x = 390;
+    y = panelY + panelH + 25;
+
+    HWND hTechListBg = CreateWindowW(L"STATIC", nullptr,
+                                      WS_VISIBLE | SS_LEFT | WS_BORDER,
+                                      x, y, 320, 180,
+                                      m_mainWindow, nullptr, m_hInstance, nullptr);
+
+    HWND hTechListTitle = CreateWindowW(L"STATIC", L"🔧 ТЕХНОЛОГИИ",
+                                         WS_VISIBLE | SS_LEFT, x + 15, y + 12, 290, 28,
+                                         m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hTechListTitle, WM_SETFONT, (WPARAM)hHeaderFont, 0);
 
     m_techList = CreateWindowW(WC_LISTBOXW, nullptr,
-                                WS_VISIBLE | WS_BORDER | LBS_NOTIFY | LBS_SORT,
-                                x, y, 280, 200,
+                                WS_VISIBLE | WS_BORDER | LBS_NOTIFY | LBS_SORT | LBS_USETABSTOPS,
+                                x + 15, y + 50, 290, 115,
                                 m_mainWindow, (HMENU)IDC_LIST_TECHS,
                                 m_hInstance, nullptr);
-    SendMessageW(m_techList, WM_SETFONT, (WPARAM)hSmallFont, 0);
-    y += 220;
+    SendMessageW(m_techList, WM_SETFONT, (WPARAM)hValueFont, 0);
 
-    // ===== Event Panel =====
-    HWND hEventPanelTitle = CreateWindowW(L"STATIC", L"══════ СОБЫТИЯ ══════",
-                                           WS_VISIBLE | SS_LEFT, x, y, 250, 25,
-                                           m_mainWindow, nullptr, m_hInstance, nullptr);
-    SendMessageW(hEventPanelTitle, WM_SETFONT, (WPARAM)hBoldFont, 0);
-    y += 35;
+    // ===== EVENT PANEL =====
+    x = 730;
+    y = panelY + panelH + 25;
 
-    m_eventLabel = CreateWindowW(L"EDIT", L"",
+    HWND hEventBg = CreateWindowW(L"STATIC", nullptr,
+                                   WS_VISIBLE | SS_LEFT | WS_BORDER,
+                                   x, y, 330, 180,
+                                   m_mainWindow, nullptr, m_hInstance, nullptr);
+
+    HWND hEventTitle = CreateWindowW(L"STATIC", L"📜 ПОСЛЕДНИЕ СОБЫТИЯ",
+                                      WS_VISIBLE | SS_LEFT, x + 15, y + 12, 300, 28,
+                                      m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hEventTitle, WM_SETFONT, (WPARAM)hHeaderFont, 0);
+
+    m_eventLabel = CreateWindowW(L"EDIT", L"Нажмите 'Следующий ход' для начала игры!",
                                   WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
-                                  x, y, 280, 80,
+                                  x + 15, y + 50, 300, 115,
                                   m_mainWindow, nullptr,
                                   m_hInstance, nullptr);
-    SendMessageW(m_eventLabel, WM_SETFONT, (WPARAM)hSmallFont, 0);
+    SendMessageW(m_eventLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
-    // ===== BOTTOM - Action Buttons =====
-    y = 680;
+    // ===== BOTTOM: Action Buttons =====
+    y = 570;
     x = 20;
-    
-    m_nextTurnBtn = CreateWindowW(L"BUTTON", L"  Следующий ход  ",
-                                   WS_VISIBLE | BS_PUSHBUTTON, x, y, 150, 45,
-                                   m_mainWindow, (HMENU)IDC_NEXT_TURN,
-                                   m_hInstance, nullptr);
-    SendMessageW(m_nextTurnBtn, WM_SETFONT, (WPARAM)hBoldFont, 0);
-    x += 160;
 
-    m_investBtn = CreateWindowW(L"BUTTON", L"  Инвестировать  ",
-                                 WS_VISIBLE | BS_PUSHBUTTON, x, y, 150, 45,
-                                 m_mainWindow, (HMENU)IDC_INVEST,
+    m_nextTurnBtn = CreateWindowW(L"BUTTON", L"🎲 СЛЕДУЮЩИЙ ХОД",
+                                   WS_VISIBLE | BS_PUSHBUTTON, x, y, 200, 50,
+                                   m_mainWindow, (HMENU)IDC_BTN_NEXT,
+                                   m_hInstance, nullptr);
+    SendMessageW(m_nextTurnBtn, WM_SETFONT, (WPARAM)hBtnFont, 0);
+    SendMessageW(m_nextTurnBtn, BCM_SETSHIELD, 0, TRUE);
+    x += 215;
+
+    m_investBtn = CreateWindowW(L"BUTTON", L"💰 ИНВЕСТИРОВАТЬ",
+                                 WS_VISIBLE | BS_PUSHBUTTON, x, y, 180, 50,
+                                 m_mainWindow, (HMENU)IDC_BTN_INVEST,
                                  m_hInstance, nullptr);
-    SendMessageW(m_investBtn, WM_SETFONT, (WPARAM)hBoldFont, 0);
-    x += 160;
+    SendMessageW(m_investBtn, WM_SETFONT, (WPARAM)hBtnFont, 0);
+    x += 195;
 
-    m_researchBtn = CreateWindowW(L"BUTTON", L"  Исследовать  ",
-                                   WS_VISIBLE | BS_PUSHBUTTON, x, y, 150, 45,
-                                   m_mainWindow, (HMENU)IDC_RESEARCH,
+    m_researchBtn = CreateWindowW(L"BUTTON", L"🔬 ИССЛЕДОВАТЬ",
+                                   WS_VISIBLE | BS_PUSHBUTTON, x, y, 180, 50,
+                                   m_mainWindow, (HMENU)IDC_BTN_RESEARCH,
                                    m_hInstance, nullptr);
-    SendMessageW(m_researchBtn, WM_SETFONT, (WPARAM)hBoldFont, 0);
-    x += 160;
+    SendMessageW(m_researchBtn, WM_SETFONT, (WPARAM)hBtnFont, 0);
+    x += 195;
 
-    m_saveBtn = CreateWindowW(L"BUTTON", L"  Сохранить  ",
-                               WS_VISIBLE | BS_PUSHBUTTON, x, y, 130, 45,
-                               m_mainWindow, (HMENU)IDC_SAVE,
+    m_saveBtn = CreateWindowW(L"BUTTON", L"💾 СОХРАНИТЬ",
+                               WS_VISIBLE | BS_PUSHBUTTON, x, y, 150, 50,
+                               m_mainWindow, (HMENU)IDC_BTN_SAVE,
                                m_hInstance, nullptr);
-    SendMessageW(m_saveBtn, WM_SETFONT, (WPARAM)hBoldFont, 0);
-    x += 140;
+    SendMessageW(m_saveBtn, WM_SETFONT, (WPARAM)hBtnFont, 0);
+    x += 165;
 
-    m_loadBtn = CreateWindowW(L"BUTTON", L"  Загрузить  ",
-                               WS_VISIBLE | BS_PUSHBUTTON, x, y, 130, 45,
-                               m_mainWindow, (HMENU)IDC_LOAD,
+    m_loadBtn = CreateWindowW(L"BUTTON", L"📂 ЗАГРУЗИТЬ",
+                               WS_VISIBLE | BS_PUSHBUTTON, x, y, 150, 50,
+                               m_mainWindow, (HMENU)IDC_BTN_LOAD,
                                m_hInstance, nullptr);
-    SendMessageW(m_loadBtn, WM_SETFONT, (WPARAM)hBoldFont, 0);
-    x += 140;
+    SendMessageW(m_loadBtn, WM_SETFONT, (WPARAM)hBtnFont, 0);
+    x += 165;
 
-    m_helpBtn = CreateWindowW(L"BUTTON", L"  Помощь  ",
-                               WS_VISIBLE | BS_PUSHBUTTON, x, y, 120, 45,
-                               m_mainWindow, (HMENU)IDC_GUI_HELP,
+    m_helpBtn = CreateWindowW(L"BUTTON", L"❓ ПОМОЩЬ",
+                               WS_VISIBLE | BS_PUSHBUTTON, x, y, 130, 50,
+                               m_mainWindow, (HMENU)IDC_BTN_HELP,
                                m_hInstance, nullptr);
-    SendMessageW(m_helpBtn, WM_SETFONT, (WPARAM)hBoldFont, 0);
-    x += 130;
+    SendMessageW(m_helpBtn, WM_SETFONT, (WPARAM)hBtnFont, 0);
+    x += 145;
 
-    m_quitBtn = CreateWindowW(L"BUTTON", L"  Выход  ",
-                              WS_VISIBLE | BS_PUSHBUTTON, x, y, 120, 45,
-                              m_mainWindow, (HMENU)IDC_QUIT,
+    m_quitBtn = CreateWindowW(L"BUTTON", L"🚪 ВЫХОД",
+                              WS_VISIBLE | BS_PUSHBUTTON, x, y, 120, 50,
+                              m_mainWindow, (HMENU)IDC_BTN_QUIT,
                               m_hInstance, nullptr);
-    SendMessageW(m_quitBtn, WM_SETFONT, (WPARAM)hBoldFont, 0);
+    SendMessageW(m_quitBtn, WM_SETFONT, (WPARAM)hBtnFont, 0);
 }
 
 void Win32Gui::updateAllUI() {
@@ -409,14 +476,9 @@ void Win32Gui::updateStats() {
     SetWindowTextW(m_militaryLabel, toWStr(std::to_string(mil)).c_str());
     SendMessageW(m_militaryBar, PBM_SETPOS, std::min(mil, 100), 0);
     
-    // Economy - use resources money as economy indicator
-    double money = m_civ->getResources().getResource(ResourceType::Money);
-    SetWindowTextW(m_economyLabel, toWStr(Utils::formatDouble(money, 0)).c_str());
-    SendMessageW(m_economyBar, PBM_SETPOS, (int)std::min(money / 10.0, 500.0), 0);
-    
     int tech = m_civ->getTech().getOverallTechLevel();
-    SetWindowTextW(m_techLevelLabel, toWStr(u8"Уровень: " + std::to_string(tech) + "/100").c_str());
-    SendMessageW(m_techProgressBar, PBM_SETPOS, tech, 0);
+    SetWindowTextW(m_techLabel, toWStr(u8"Уровень: " + std::to_string(tech) + "/100").c_str());
+    SendMessageW(m_techBar, PBM_SETPOS, tech, 0);
 }
 
 void Win32Gui::updateResources() {
@@ -438,7 +500,7 @@ void Win32Gui::updateTechTree() {
 
     auto researched = m_civ->getTech().getResearchedTechs();
     for (const auto* tech : researched) {
-        std::wstring text = L"[x] " + toWStr(tech->name);
+        std::wstring text = L"[✓] " + toWStr(tech->name);
         SendMessageW(m_techList, LB_ADDSTRING, 0, (LPARAM)text.c_str());
     }
 
@@ -452,36 +514,35 @@ void Win32Gui::updateTechTree() {
 
 void Win32Gui::updateEvents() {
     if (!m_civ) {
-        SetWindowTextW(m_eventLabel, L"");
         return;
     }
 
     const auto& history = m_events->getEventHistory();
     if (history.empty()) {
-        SetWindowTextW(m_eventLabel, L"Событий пока не было.");
         return;
     }
 
     std::wstringstream ss;
     size_t start = (history.size() > 5) ? history.size() - 5 : 0;
     for (size_t i = start; i < history.size(); ++i) {
-        ss << L"[" << (i + 1) << L"] " << toWStr(history[i].name) << L"\r\n";
+        ss << L"▸ " << toWStr(history[i].name) << L"\r\n";
     }
     SetWindowTextW(m_eventLabel, ss.str().c_str());
 }
 
 void Win32Gui::updateEra() {
     if (!m_civ) return;
-    SetWindowTextW(m_eraLabel, toWStr(u8"Эпоха: " + eraToString(m_civ->getCurrentEra())).c_str());
+    SetWindowTextW(m_eraLabel, toWStr(eraToString(m_civ->getCurrentEra())).c_str());
 }
 
 void Win32Gui::onNextTurn() {
     if (!m_civ) {
-        // Start new game
         m_civ = std::make_unique<Civilization>(u8"Цивилизация");
         m_events = std::make_unique<EventSystem>();
         m_saveSystem = std::make_unique<SaveSystem>();
         m_events->init(m_difficulty);
+        updateEra();
+        updateResources();
     }
 
     GameEvent event = m_events->generateEvent(m_civ->getCurrentEra(), m_civ->getTurn());
@@ -490,7 +551,10 @@ void Win32Gui::onNextTurn() {
     m_civ->processTurn();
 
     std::wstringstream ss;
-    ss << toWStr(event.name) << L"\r\n\r\n" << toWStr(event.description);
+    ss << L"━━━━━━━━━━━━━━━━━━━━━━━━\r\n";
+    ss << L"📌 " << toWStr(event.name) << L"\r\n\r\n";
+    ss << toWStr(event.description) << L"\r\n";
+    ss << L"━━━━━━━━━━━━━━━━━━━━━━━━";
     SetWindowTextW(m_eventLabel, ss.str().c_str());
 
     updateAllUI();
@@ -498,35 +562,37 @@ void Win32Gui::onNextTurn() {
 
 void Win32Gui::onInvest() {
     if (!m_civ) {
-        showMessage(L"Ошибка", L"Сначала начните новую игру!");
+        MessageBoxW(m_mainWindow, L"Сначала начните новую игру!", L"Ошибка", MB_OK | MB_ICONWARNING);
         return;
     }
-    showMessage(L"Инвестиции", L"Выберите ветку технологий и введите сумму инвестиций.");
+    MessageBoxW(m_mainWindow, 
+        L"Выберите ветку технологий из меню исследования\nи вложите деньги в её развитие.",
+        L"Инвестирование", MB_OK | MB_ICONINFORMATION);
 }
 
 void Win32Gui::onResearch() {
     if (!m_civ) {
-        showMessage(L"Ошибка", L"Сначала начните новую игру!");
+        MessageBoxW(m_mainWindow, L"Сначала начните новую игру!", L"Ошибка", MB_OK | MB_ICONWARNING);
         return;
     }
-    showMessage(L"Исследование", L"Выберите технологию из списка для исследования.");
+    MessageBoxW(m_mainWindow, 
+        L"Дважды кликните по технологии в списке,\nчтобы исследовать её (требуются деньги).",
+        L"Исследование технологий", MB_OK | MB_ICONINFORMATION);
 }
 
 void Win32Gui::onSave() {
     if (!m_civ) {
-        showMessage(L"Ошибка", L"Сначала начните новую игру!");
+        MessageBoxW(m_mainWindow, L"Сначала начните новую игру!", L"Ошибка", MB_OK | MB_ICONWARNING);
         return;
     }
     if (m_saveSystem->saveGame(*m_civ, *m_events, m_difficulty)) {
-        showMessage(L"Сохранение", L"Игра успешно сохранена!");
-    } else {
-        showMessage(L"Ошибка", toWStr(m_saveSystem->getLastError()).c_str());
+        MessageBoxW(m_mainWindow, L"Игра успешно сохранена!", L"Сохранение", MB_OK | MB_ICONINFORMATION);
     }
 }
 
 void Win32Gui::onLoad() {
     if (!SaveSystem::saveExists()) {
-        showMessage(L"Ошибка", L"Файл сохранения не найден!");
+        MessageBoxW(m_mainWindow, L"Файл сохранения не найден!", L"Ошибка", MB_OK | MB_ICONWARNING);
         return;
     }
     
@@ -535,29 +601,31 @@ void Win32Gui::onLoad() {
     m_saveSystem = std::make_unique<SaveSystem>();
     
     if (m_saveSystem->loadGame(*m_civ, *m_events, m_difficulty)) {
-        showMessage(L"Загрузка", L"Игра успешно загружена!");
+        MessageBoxW(m_mainWindow, L"Игра успешно загружена!", L"Загрузка", MB_OK | MB_ICONINFORMATION);
         updateAllUI();
-    } else {
-        showMessage(L"Ошибка", toWStr(m_saveSystem->getLastError()).c_str());
     }
 }
 
-void Win32Gui::onHelp() {
-    showMessage(L"Помощь",
-        L"ЦЕЛЬ: Проведите цивилизацию от Каменного века до Космической эры!\n\n"
-        L"УСЛОВИЯ ПОБЕДЫ:\n"
-        L"- Освоение космоса (макс. уровень космических технологий)\n"
-        L"- Экономическая стабильность (50 ходов подряд)\n"
-        L"- Технологическое превосходство (уровень 100)\n\n"
-        L"УСЛОВИЯ ПОРАЖЕНИЯ:\n"
-        L"- Население достигло 0\n"
-        L"- Экология ниже 5%\n"
-        L"- Экономический коллапс\n\n"
-        L"УПРАВЛЕНИЕ:\n"
-        L"- Следующий ход - продвигает время\n"
-        L"- Инвестиции - вкладывайте деньги в технологии\n"
-        L"- Исследование - открывайте новые технологии"
-    );
+void Win32Gui::onHelpBtn() {
+    MessageBoxW(m_mainWindow, 
+        L"🏛️ СИМУЛЯТОР ЦИВИЛИЗАЦИИ\n\n"
+        L"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        L"🎯 ЦЕЛЬ:\n"
+        L"Доведите цивилизацию от Каменного века до Космической эры!\n\n"
+        L"✅ УСЛОВИЯ ПОБЕДЫ:\n"
+        L"• Освоение космоса (макс. уровень космических технологий)\n"
+        L"• Экономическая стабильность (50 ходов подряд)\n"
+        L"• Технологическое превосходство (уровень 100)\n\n"
+        L"❌ УСЛОВИЯ ПОРАЖЕНИЯ:\n"
+        L"• Население достигло 0\n"
+        L"• Экология ниже 5%\n"
+        L"• Экономический коллапс\n\n"
+        L"💡 СОВЕТЫ:\n"
+        L"• Балансируйте инвестиции между ветками\n"
+        L"• Наука улучшает экологию\n"
+        L"• Медицина увеличивает рост населения\n"
+        L"• Поддерживайте высокое счастье",
+        L"ПОМОЩЬ", MB_OK | MB_ICONQUESTION);
 }
 
 void Win32Gui::onQuit() {
@@ -568,21 +636,8 @@ void Win32Gui::onQuit() {
     }
 }
 
-void Win32Gui::onDifficultyChange() {
-    int idx = SendMessageW(m_difficultyCombo, CB_GETCURSEL, 0, 0);
-    m_difficulty = static_cast<Difficulty>(idx);
-}
-
-void Win32Gui::onBranchChange() {
-    // Handle branch selection
-}
-
 void Win32Gui::onTechSelect() {
-    // Handle tech selection from list
-}
-
-void Win32Gui::showMessage(const std::wstring& title, const std::wstring& text) {
-    MessageBoxW(m_mainWindow, text.c_str(), title.c_str(), MB_OK | MB_ICONINFORMATION);
+    // Future: Implement tech research from list
 }
 
 LRESULT CALLBACK Win32Gui::StaticWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -606,15 +661,13 @@ LRESULT Win32Gui::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
-                case IDC_NEXT_TURN: onNextTurn(); break;
-                case IDC_INVEST: onInvest(); break;
-                case IDC_RESEARCH: onResearch(); break;
-                case IDC_SAVE: onSave(); break;
-                case IDC_LOAD: onLoad(); break;
-                case IDC_GUI_HELP: onHelp(); break;
-                case IDC_QUIT: onQuit(); break;
-                case IDC_COMBO_DIFFICULTY: onDifficultyChange(); break;
-                case IDC_COMBO_BRANCH: onBranchChange(); break;
+                case IDC_BTN_NEXT: onNextTurn(); break;
+                case IDC_BTN_INVEST: onInvest(); break;
+                case IDC_BTN_RESEARCH: onResearch(); break;
+                case IDC_BTN_SAVE: onSave(); break;
+                case IDC_BTN_LOAD: onLoad(); break;
+                case IDC_BTN_HELP: onHelpBtn(); break;
+                case IDC_BTN_QUIT: onQuit(); break;
                 case IDC_LIST_TECHS: if (HIWORD(wParam) == LBN_DBLCLK) onTechSelect(); break;
             }
             break;
