@@ -61,6 +61,10 @@ private:
     HWND m_mainWindow;
     bool m_running;
     
+    // Brushes for background colors
+    HBRUSH m_bgBrush = nullptr;
+    HBRUSH m_panelBrush = nullptr;
+    
     // Game state
     std::unique_ptr<Civilization> m_civ;
     std::unique_ptr<EventSystem> m_events;

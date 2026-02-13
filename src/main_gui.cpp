@@ -1,3 +1,5 @@
+#define NOMINMAX
+
 #include "ui/Win32Gui.h"
 #include <Windows.h>
 #include <stdexcept>
