@@ -9,6 +9,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
+#include <ctime>
 
 #pragma comment(lib, "comctl32.lib")
 
@@ -21,6 +22,431 @@ const COLORREF C7_TEXT = RGB(220, 225, 230);      // Main text
 const COLORREF C7_TEXT_DIM = RGB(160, 165, 170);  // Dimmed text for descriptions
 const COLORREF C7_GOLD = RGB(200, 155, 60);       // Titles, highlights
 const COLORREF C7_SELECTION = RGB(60, 68, 85);    // Listbox selection
+
+// --- Building Definitions ---
+struct BuildingDef {
+    std::wstring name;
+    double costMoney;
+    double costMaterials;
+    int popCapAdd;
+    double foodAdd;
+    double moneyAdd;
+    double materialsAdd;
+    double energyAdd;
+    double militaryAdd;
+    Era minEra;
+    COLORREF color;
+};
+
+static const std::vector<BuildingDef> s_buildingDefs = {
+    { L"Дом",       0,   50,  50, 0,   0,   0,   0,   0, Era::StoneAge,   RGB(200, 150, 100) },
+    { L"Ферма",     20,  20,  0,  15,  0,   0,   0,   0, Era::StoneAge,   RGB(50, 200, 50) },
+    { L"Рынок",     50,  50,  0,  0,   10,  0,   0,   0, Era::BronzeAge,  RGB(200, 200, 50) },
+    { L"Шахта",     100, 0,   0,  0,   0,   10,  0,   0, Era::BronzeAge,  RGB(100, 100, 100) },
+    { L"Казарма",   150, 100, 0,  0,   0,   0,   0,   5, Era::IronAge,    RGB(200, 50, 50) },
+    { L"Завод",     300, 200, 0,  0,   20,  20, -10,  0, Era::Industrial, RGB(120, 120, 130) },
+    { L"Эл.станция",400, 300, 0,  0,   0,   0,   30,  0, Era::Industrial, RGB(100, 200, 255) }
+};
+
+// --- City Map Visualizer ---
+struct CityEntity {
+    float x, y;
+    float dx, dy;
+    int type; // 0=Settler, 1=Building, 2=TownHall
+    int variant;
+    int buildingDefIdx; // Index in s_buildingDefs if type==1
+    COLORREF color;
+};
+
+static std::vector<CityEntity> s_cityEntities;
+static Era s_currentEraDisplay = Era::StoneAge;
+static HWND s_hCityMap = nullptr;
+static HWND s_hMapTooltip = nullptr; // Tooltip for the map/HUD
+
+static int s_selectedBuildingIdx = -1; // -1 means none selected
+static int s_housingCap = 100;
+
+// --- Tooltip Helper & Globals ---
+static HWND s_hTooltip = nullptr;
+static WNDPROC s_oldListProc = nullptr;
+static Civilization* s_activeCiv = nullptr;
+static int s_lastTooltipItem = -1;
+
+static std::wstring ToWStrStatic(const std::string& str) {
+    if (str.empty()) return L"";
+    int size = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, nullptr, 0);
+    std::wstring wstr(size, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &wstr[0], size);
+    return wstr;
+}
+
+static LRESULT CALLBACK ListBoxSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_MOUSEMOVE) {
+        if (s_hTooltip && s_activeCiv) {
+            // Relay for tooltip timing
+            MSG relayMsg = { hwnd, msg, wParam, lParam };
+            SendMessageW(s_hTooltip, TTM_RELAYEVENT, 0, (LPARAM)&relayMsg);
+
+            POINT pt = {LOWORD(lParam), HIWORD(lParam)};
+            LRESULT result = SendMessageW(hwnd, LB_ITEMFROMPOINT, 0, MAKELPARAM(pt.x, pt.y));
+            
+            if (HIWORD(result) == 0) { // Inside client area
+                int index = LOWORD(result);
+                if (index != s_lastTooltipItem) {
+                    s_lastTooltipItem = index;
+                    
+                    std::wstring text = L"";
+                    LPARAM itemData = SendMessageW(hwnd, LB_GETITEMDATA, index, 0);
+                    
+                    // itemData is index in available vector, or -1
+                    if (itemData != -1) {
+                        auto available = s_activeCiv->getTech().getAvailableTechs();
+                        if (itemData >= 0 && itemData < (LPARAM)available.size()) {
+                            text = ToWStrStatic(available[itemData]->description);
+                        }
+                    }
+
+                    TOOLINFOW ti = { 0 };
+                    ti.cbSize = sizeof(TOOLINFOW);
+                    ti.hwnd = GetParent(hwnd);
+                    ti.uId = (UINT_PTR)hwnd;
+                    ti.lpszText = const_cast<LPWSTR>(text.c_str());
+                    
+                    SendMessageW(s_hTooltip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
+                    
+                    if (text.empty()) {
+                        SendMessageW(s_hTooltip, TTM_ACTIVATE, FALSE, 0);
+                    } else {
+                        SendMessageW(s_hTooltip, TTM_ACTIVATE, TRUE, 0);
+                    }
+                }
+            } else {
+                s_lastTooltipItem = -1;
+                SendMessageW(s_hTooltip, TTM_ACTIVATE, FALSE, 0);
+            }
+        }
+    }
+    return CallWindowProcW(s_oldListProc, hwnd, msg, wParam, lParam);
+}
+
+static void InitCityMap() {
+    s_cityEntities.clear();
+    s_selectedBuildingIdx = -1;
+    // Start with one Town Hall in the center
+    CityEntity townHall;
+    townHall.x = 570.0f; // Center of 1140 width
+    townHall.y = 375.0f; // Center of 750 height
+    townHall.dx = 0; townHall.dy = 0;
+    townHall.type = 2; // Town Hall
+    townHall.variant = 0;
+    townHall.buildingDefIdx = -1;
+    townHall.color = C7_GOLD;
+    s_cityEntities.push_back(townHall);
+}
+
+static bool IsOverlapping(float x, float y, float r) {
+    for(const auto& e : s_cityEntities) {
+        if(e.type == 0) continue; // Ignore settlers
+        float distSq = (e.x - x)*(e.x - x) + (e.y - y)*(e.y - y);
+        float minDist = (r + 12.0f); 
+        if(distSq < minDist*minDist) return true;
+    }
+    return false;
+}
+
+static void UpdateCityMap(const Civilization& civ) {
+    s_currentEraDisplay = civ.getCurrentEra();
+    
+    // Only update settlers count, buildings are persistent now
+    double pop = (double)civ.getPopulation();
+    size_t targetSettlers = (size_t)(std::log(pop + 1.0) * 15.0);
+    if (targetSettlers > 150) targetSettlers = 150;
+
+    // Count current
+    size_t settlers = 0;
+    std::vector<int> buildingIndices;
+
+    for(size_t i = 0; i < s_cityEntities.size(); ++i) {
+        const auto& e = s_cityEntities[i];
+        if(e.type == 0) settlers++;
+        else {
+            buildingIndices.push_back((int)i);
+        }
+    }
+
+    // Add Settlers
+    while(settlers < targetSettlers) {
+        CityEntity s;
+        float sx = 570.0f, sy = 375.0f;
+        if(!buildingIndices.empty()) {
+            const auto& b = s_cityEntities[buildingIndices[rand() % buildingIndices.size()]];
+            sx = b.x; sy = b.y;
+        }
+        s.x = sx; s.y = sy;
+        s.dx = (float)(rand() % 20 - 10) / 20.0f;
+        s.dy = (float)(rand() % 20 - 10) / 20.0f;
+        s.type = 0;
+        s.variant = 0;
+        s.buildingDefIdx = -1;
+        s.color = RGB(240, 240, 240);
+        s_cityEntities.push_back(s);
+        settlers++;
+    }
+}
+
+static int s_lastMapTooltipIdx = -2; // -2: init, -1: none
+
+static LRESULT CALLBACK CityMapWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch(msg) {
+    case WM_TIMER: {
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        for(auto& e : s_cityEntities) {
+            if(e.type == 0) { // Move settlers
+                e.x += e.dx;
+                e.y += e.dy;
+                if(e.x < 0 || e.x > rc.right) e.dx *= -1;
+                if(e.y < 0 || e.y > rc.bottom) e.dy *= -1;
+                if(rand()%100 == 0) { e.dx = (float)(rand()%20-10)/20.0f; e.dy = (float)(rand()%20-10)/20.0f; }
+            }
+        }
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+    }
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        
+        HDC hMemDC = CreateCompatibleDC(hdc);
+        HBITMAP hBm = CreateCompatibleBitmap(hdc, rc.right, rc.bottom);
+        HBITMAP hOldBm = (HBITMAP)SelectObject(hMemDC, hBm);
+        
+        // Background based on Era
+        COLORREF bgCol = RGB(34, 139, 34); // Stone Age Green
+        if (s_currentEraDisplay >= Era::Industrial) bgCol = RGB(80, 80, 90); // Industrial Grey
+        if (s_currentEraDisplay == Era::Space) bgCol = RGB(20, 20, 40); // Space Dark
+        
+        HBRUSH hBg = CreateSolidBrush(bgCol);
+        FillRect(hMemDC, &rc, hBg);
+        DeleteObject(hBg);
+
+        // Draw HUD Background (Bottom 40px)
+        RECT rcHud = {0, rc.bottom - 40, rc.right, rc.bottom};
+        HBRUSH hHudBg = CreateSolidBrush(RGB(40, 40, 50));
+        FillRect(hMemDC, &rcHud, hHudBg);
+        DeleteObject(hHudBg);
+
+        // Draw Entities
+        for(const auto& e : s_cityEntities) {
+            if(e.type == 0) { // Settler
+                HBRUSH hBr = CreateSolidBrush(e.color);
+                HBRUSH hOld = (HBRUSH)SelectObject(hMemDC, hBr);
+                Ellipse(hMemDC, (int)e.x-2, (int)e.y-2, (int)e.x+2, (int)e.y+2);
+                SelectObject(hMemDC, hOld);
+                DeleteObject(hBr);
+            } else { // Building
+                int size = (e.type == 2) ? 8 : 5;
+                RECT rB = {(int)e.x-size, (int)e.y-size, (int)e.x+size, (int)e.y+size};
+                HBRUSH hB = CreateSolidBrush(e.color);
+                FillRect(hMemDC, &rB, hB);
+                DeleteObject(hB);
+                
+                // Roof
+                POINT pts[3] = {
+                    {(int)e.x, (int)e.y-size-4},
+                    {(int)e.x-size, (int)e.y-size},
+                    {(int)e.x+size, (int)e.y-size}
+                };
+                HBRUSH hRoof = CreateSolidBrush(RGB(139, 69, 19));
+                HBRUSH hOld = (HBRUSH)SelectObject(hMemDC, hRoof);
+                HPEN hPen = CreatePen(PS_SOLID, 1, RGB(100, 50, 10));
+                HPEN hOldPen = (HPEN)SelectObject(hMemDC, hPen);
+                Polygon(hMemDC, pts, 3);
+                SelectObject(hMemDC, hOld);
+                SelectObject(hMemDC, hOldPen);
+                DeleteObject(hRoof);
+                DeleteObject(hPen);
+            }
+        }
+        
+        // Draw HUD Items
+        int xPos = 10;
+        int yPos = rc.bottom - 35;
+        SetBkMode(hMemDC, TRANSPARENT);
+        
+        for (int i = 0; i < (int)s_buildingDefs.size(); ++i) {
+            const auto& def = s_buildingDefs[i];
+            if (s_currentEraDisplay < def.minEra) continue;
+
+            RECT rItem = {xPos, yPos, xPos + 80, yPos + 30};
+            
+            // Highlight selection
+            if (i == s_selectedBuildingIdx) {
+                HBRUSH hSel = CreateSolidBrush(RGB(80, 80, 100));
+                FillRect(hMemDC, &rItem, hSel);
+                DeleteObject(hSel);
+                FrameRect(hMemDC, &rItem, (HBRUSH)GetStockObject(WHITE_BRUSH));
+            } else {
+                HBRUSH hBtn = CreateSolidBrush(RGB(60, 60, 70));
+                FillRect(hMemDC, &rItem, hBtn);
+                DeleteObject(hBtn);
+            }
+
+            // Color indicator
+            RECT rCol = {xPos + 5, yPos + 5, xPos + 25, yPos + 25};
+            HBRUSH hCol = CreateSolidBrush(def.color);
+            FillRect(hMemDC, &rCol, hCol);
+            DeleteObject(hCol);
+
+            // Name
+            RECT rText = {xPos + 30, yPos, xPos + 80, yPos + 30};
+            SetTextColor(hMemDC, RGB(255, 255, 255));
+            DrawTextW(hMemDC, def.name.c_str(), -1, &rText, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+            xPos += 90;
+        }
+
+        BitBlt(hdc, 0, 0, rc.right, rc.bottom, hMemDC, 0, 0, SRCCOPY);
+        SelectObject(hMemDC, hOldBm); DeleteObject(hBm); DeleteDC(hMemDC);
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    case WM_MOUSEMOVE: {
+        if (s_hMapTooltip) {
+            MSG relayMsg = { hwnd, msg, wParam, lParam };
+            SendMessageW(s_hMapTooltip, TTM_RELAYEVENT, 0, (LPARAM)&relayMsg);
+        }
+
+        int xPos = LOWORD(lParam);
+        int yPos = HIWORD(lParam);
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+
+        // Check HUD hover
+        int hoveredIdx = -1;
+        if (yPos > rc.bottom - 50) {
+            int hudX = 10;
+            for (int i = 0; i < (int)s_buildingDefs.size(); ++i) {
+                if (s_currentEraDisplay < s_buildingDefs[i].minEra) continue;
+                if (xPos >= hudX && xPos <= hudX + 100) {
+                    hoveredIdx = i;
+                    break;
+                }
+                hudX += 110;
+            }
+        }
+
+        if (hoveredIdx != s_lastMapTooltipIdx) {
+            s_lastMapTooltipIdx = hoveredIdx;
+            std::wstring text = L"";
+            if (hoveredIdx >= 0) {
+                const auto& def = s_buildingDefs[hoveredIdx];
+                text = def.name + L"\nЦена: $" + std::to_wstring((int)def.costMoney) + 
+                       L", Мат: " + std::to_wstring((int)def.costMaterials) + L"\n";
+                if(def.popCapAdd > 0) text += L"Жилье: +" + std::to_wstring(def.popCapAdd) + L"\n";
+                if(def.foodAdd > 0) text += L"Еда: +" + std::to_wstring((int)def.foodAdd) + L"/ход\n";
+                if(def.moneyAdd > 0) text += L"Деньги: +" + std::to_wstring((int)def.moneyAdd) + L"/ход\n";
+                if(def.materialsAdd > 0) text += L"Материалы: +" + std::to_wstring((int)def.materialsAdd) + L"/ход\n";
+            }
+
+            TOOLINFOW ti = { 0 };
+            ti.cbSize = sizeof(TOOLINFOW);
+            ti.hwnd = hwnd;
+            ti.uId = 1;
+            ti.lpszText = const_cast<LPWSTR>(text.c_str());
+            SendMessageW(s_hMapTooltip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
+            SendMessageW(s_hMapTooltip, TTM_ACTIVATE, !text.empty(), 0);
+        }
+        return 0;
+    }
+    case WM_LBUTTONDOWN: {
+        int xPos = LOWORD(lParam);
+        int yPos = HIWORD(lParam);
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+
+        // Check HUD click
+        if (yPos > rc.bottom - 40) {
+            int hudX = 10;
+            for (int i = 0; i < (int)s_buildingDefs.size(); ++i) {
+                if (s_currentEraDisplay < s_buildingDefs[i].minEra) continue;
+                if (xPos >= hudX && xPos <= hudX + 80) {
+                    s_selectedBuildingIdx = i;
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return 0;
+                }
+                hudX += 90;
+            }
+            return 0;
+        }
+
+        // Place Building
+        if (s_selectedBuildingIdx != -1) {
+            if (!s_activeCiv) {
+                MessageBoxW(hwnd, L"Сначала начните новую игру (Нажмите 'Следующий ход')!", L"Ошибка", MB_OK | MB_ICONWARNING);
+                return 0;
+            }
+
+            const auto& def = s_buildingDefs[s_selectedBuildingIdx];
+            double money = s_activeCiv->getResources().getResource(ResourceType::Money);
+            double mats = s_activeCiv->getResources().getResource(ResourceType::Materials);
+
+            if (money >= def.costMoney && mats >= def.costMaterials) {
+                if (!IsOverlapping((float)xPos, (float)yPos, 10.0f)) {
+                    s_activeCiv->getResources().removeResource(ResourceType::Money, def.costMoney);
+                    s_activeCiv->getResources().removeResource(ResourceType::Materials, def.costMaterials);
+
+                    CityEntity b;
+                    b.x = (float)xPos; b.y = (float)yPos;
+                    b.dx = 0; b.dy = 0;
+                    b.type = 1; // Building
+                    b.variant = 0;
+                    b.buildingDefIdx = s_selectedBuildingIdx;
+                    b.color = def.color;
+                    s_cityEntities.push_back(b);
+                    
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                } else {
+                    MessageBoxW(hwnd, L"Слишком близко к другому зданию!", L"Ошибка", MB_OK | MB_ICONWARNING);
+                }
+            } else {
+                MessageBoxW(hwnd, L"Недостаточно ресурсов!", L"Ошибка", MB_OK | MB_ICONWARNING);
+            }
+            return 0;
+        }
+
+        // Iterate backwards to check topmost entities first
+        for (auto it = s_cityEntities.rbegin(); it != s_cityEntities.rend(); ++it) {
+            const auto& e = *it;
+            if (e.type != 0) { // It's a building
+                RECT rB = {(int)e.x-8, (int)e.y-8, (int)e.x+8, (int)e.y+8};
+                POINT pt = {xPos, yPos};
+                if (PtInRect(&rB, pt)) {
+                    std::wstring info;
+                    if (e.type == 1 && e.buildingDefIdx >= 0) {
+                        info = s_buildingDefs[e.buildingDefIdx].name;
+                    } else if (e.type == 2) {
+                        info = L"Ратуша.\n\nЦентр вашего поселения.";
+                    }
+                    MessageBoxW(hwnd, info.c_str(), L"Информация о здании", MB_OK | MB_ICONINFORMATION);
+                    return 0; // Stop after finding the first building
+                }
+            }
+        }
+        return 0;
+    }
+    case WM_RBUTTONDOWN: {
+        if (s_selectedBuildingIdx != -1) {
+            s_selectedBuildingIdx = -1;
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
+        return 0;
+    }
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
 
 // --- Difficulty Dialog Helper ---
 static Difficulty s_selectedDifficulty = Difficulty::Normal;
@@ -106,69 +532,6 @@ static Difficulty AskDifficulty(HINSTANCE hInstance, HWND hParent) {
     return s_selectedDifficulty;
 }
 // --------------------------------
-
-// --- Tooltip Helper ---
-static HWND s_hTooltip = nullptr;
-static WNDPROC s_oldListProc = nullptr;
-static Civilization* s_activeCiv = nullptr;
-static int s_lastTooltipItem = -1;
-
-static std::wstring ToWStrStatic(const std::string& str) {
-    if (str.empty()) return L"";
-    int size = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, nullptr, 0);
-    std::wstring wstr(size, 0);
-    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &wstr[0], size);
-    return wstr;
-}
-
-static LRESULT CALLBACK ListBoxSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (msg == WM_MOUSEMOVE) {
-        if (s_hTooltip && s_activeCiv) {
-            // Relay for tooltip timing
-            MSG relayMsg = { hwnd, msg, wParam, lParam };
-            SendMessageW(s_hTooltip, TTM_RELAYEVENT, 0, (LPARAM)&relayMsg);
-
-            POINT pt = {LOWORD(lParam), HIWORD(lParam)};
-            LRESULT result = SendMessageW(hwnd, LB_ITEMFROMPOINT, 0, MAKELPARAM(pt.x, pt.y));
-            
-            if (HIWORD(result) == 0) { // Inside client area
-                int index = LOWORD(result);
-                if (index != s_lastTooltipItem) {
-                    s_lastTooltipItem = index;
-                    
-                    std::wstring text = L"";
-                    LPARAM itemData = SendMessageW(hwnd, LB_GETITEMDATA, index, 0);
-                    
-                    // itemData is index in available vector, or -1
-                    if (itemData != -1) {
-                        auto available = s_activeCiv->getTech().getAvailableTechs();
-                        if (itemData >= 0 && itemData < (LPARAM)available.size()) {
-                            text = ToWStrStatic(available[itemData]->description);
-                        }
-                    }
-
-                    TOOLINFOW ti = { 0 };
-                    ti.cbSize = sizeof(TOOLINFOW);
-                    ti.hwnd = GetParent(hwnd);
-                    ti.uId = (UINT_PTR)hwnd;
-                    ti.lpszText = const_cast<LPWSTR>(text.c_str());
-                    
-                    SendMessageW(s_hTooltip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
-                    
-                    if (text.empty()) {
-                        SendMessageW(s_hTooltip, TTM_ACTIVATE, FALSE, 0);
-                    } else {
-                        SendMessageW(s_hTooltip, TTM_ACTIVATE, TRUE, 0);
-                    }
-                }
-            } else {
-                s_lastTooltipItem = -1;
-                SendMessageW(s_hTooltip, TTM_ACTIVATE, FALSE, 0);
-            }
-        }
-    }
-    return CallWindowProcW(s_oldListProc, hwnd, msg, wParam, lParam);
-}
 
 // --- Game Over Dialog Helper ---
 static bool s_gameOverDialogDone = false;
@@ -312,6 +675,7 @@ std::wstring Win32Gui::toWStr(const std::string& str) {
 
 int Win32Gui::run(HINSTANCE hInstance, int nCmdShow) {
     m_hInstance = hInstance;
+    std::srand((unsigned int)std::time(nullptr));
 
     INITCOMMONCONTROLSEX icex;
     icex.dwICC = ICC_PROGRESS_CLASS | ICC_LISTVIEW_CLASSES | ICC_UPDOWN_CLASS;
@@ -329,6 +693,14 @@ int Win32Gui::run(HINSTANCE hInstance, int nCmdShow) {
     if (!RegisterClassExW(&wc)) {
         return 1;
     }
+    
+    // Register CityMap Class
+    WNDCLASSEXW wcMap = {0};
+    wcMap.cbSize = sizeof(WNDCLASSEXW);
+    wcMap.lpfnWndProc = CityMapWndProc;
+    wcMap.hInstance = hInstance;
+    wcMap.lpszClassName = L"CityMapClass";
+    RegisterClassExW(&wcMap);
 
     m_mainWindow = CreateWindowExW(
         WS_EX_COMPOSITED, CLASS_NAME, WINDOW_TITLE,
@@ -343,7 +715,7 @@ int Win32Gui::run(HINSTANCE hInstance, int nCmdShow) {
     }
 
     createControls();
-    ShowWindow(m_mainWindow, nCmdShow);
+    ShowWindow(m_mainWindow, SW_MAXIMIZE); // Force maximized window
     UpdateWindow(m_mainWindow);
 
     MSG msg = {};
@@ -357,24 +729,27 @@ int Win32Gui::run(HINSTANCE hInstance, int nCmdShow) {
 }
 
 void Win32Gui::createControls() {
+    // Resize window to fit new layout
+    SetWindowPos(m_mainWindow, nullptr, 0, 0, 1920, 1080, SWP_NOZORDER);
+
     // Create brushes
     m_bgBrush = CreateSolidBrush(C7_BG);
     m_panelBrush = CreateSolidBrush(C7_PANEL);
 
     // Fonts
-    HFONT hTitleFont = CreateFontW(24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    HFONT hTitleFont = CreateFontW(36, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                     DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
                                     CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                     VARIABLE_PITCH, L"Segoe UI");
-    HFONT hBtnFont = CreateFontW(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    HFONT hBtnFont = CreateFontW(20, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                    DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
                                    CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                    VARIABLE_PITCH, L"Segoe UI");
-    HFONT hLabelFont = CreateFontW(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    HFONT hLabelFont = CreateFontW(20, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                    DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
                                    CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                    VARIABLE_PITCH, L"Georgia");
-    HFONT hValueFont = CreateFontW(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT hValueFont = CreateFontW(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                     DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
                                     CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                     VARIABLE_PITCH, L"Consolas");
@@ -386,108 +761,149 @@ void Win32Gui::createControls() {
 
     // Title
     HWND hTitle = CreateWindowW(L"STATIC", L"СИМУЛЯТОР ЦИВИЛИЗАЦИИ",
-                                 childStyle | SS_LEFT, x, y, 300, 35,
+                                 childStyle | SS_LEFT, x, y, 400, 45,
                                  m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(hTitle, WM_SETFONT, (WPARAM)hTitleFont, 0);
 
     // Era and Turn
-    y = 65;
+    y = 70;
     m_eraLabel = CreateWindowW(L"STATIC", L"Каменный век",
-                                childStyle | SS_LEFT, x, y, 200, 25,
+                                childStyle | SS_LEFT, x, y, 300, 30,
                                 m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_eraLabel, WM_SETFONT, (WPARAM)hLabelFont, 0);
 
     m_turnLabel = CreateWindowW(L"STATIC", L"Ход: 0",
-                                childStyle | SS_LEFT, x + 220, y, 100, 25,
+                                childStyle | SS_LEFT, x + 320, y, 150, 30,
                                 m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_turnLabel, WM_SETFONT, (WPARAM)hLabelFont, 0);
 
     // Stats in one row - compact
-    y = 105;
+    y = 25; // Top right area for stats
+    int statX = 500;
+    int statGap = 250;
+
     HWND hPopTitle = CreateWindowW(L"STATIC", L"Население:",
-                  childStyle | SS_LEFT, x, y, 80, 20,
+                  childStyle | SS_LEFT, statX, y, 100, 25,
                   m_mainWindow, nullptr, m_hInstance, nullptr);
     
     m_populationLabel = CreateWindowW(L"STATIC", L"1000",
-                                       childStyle | SS_LEFT, x + 90, y, 60, 20,
+                                       childStyle | SS_LEFT, statX + 110, y, 100, 25,
                                        m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_populationLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
     HWND hHappyTitle = CreateWindowW(L"STATIC", L"Счастье:",
-                  childStyle | SS_LEFT, x + 170, y, 70, 20,
+                  childStyle | SS_LEFT, statX + statGap, y, 90, 25,
                   m_mainWindow, nullptr, m_hInstance, nullptr);
     m_happinessLabel = CreateWindowW(L"STATIC", L"70%",
-                                     childStyle | SS_LEFT, x + 250, y, 50, 20,
+                                     childStyle | SS_LEFT, statX + statGap + 100, y, 80, 25,
                                      m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_happinessLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
     HWND hEcoTitle = CreateWindowW(L"STATIC", L"Экология:",
-                  childStyle | SS_LEFT, x + 320, y, 70, 20,
+                  childStyle | SS_LEFT, statX + statGap*2, y, 90, 25,
                   m_mainWindow, nullptr, m_hInstance, nullptr);
     m_ecologyLabel = CreateWindowW(L"STATIC", L"90%",
-                                    childStyle | SS_LEFT, x + 400, y, 50, 20,
+                                    childStyle | SS_LEFT, statX + statGap*2 + 100, y, 80, 25,
                                     m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_ecologyLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
     HWND hMilTitle = CreateWindowW(L"STATIC", L"Армия:",
-                  childStyle | SS_LEFT, x + 470, y, 50, 20,
+                  childStyle | SS_LEFT, statX + statGap*3, y, 70, 25,
                   m_mainWindow, nullptr, m_hInstance, nullptr);
     m_militaryLabel = CreateWindowW(L"STATIC", L"10",
-                                    childStyle | SS_LEFT, x + 530, y, 40, 20,
+                                    childStyle | SS_LEFT, statX + statGap*3 + 80, y, 80, 25,
                                     m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_militaryLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
     HWND hTechTitle = CreateWindowW(L"STATIC", L"Технологии:",
-                  childStyle | SS_LEFT, x + 590, y, 90, 20,
+                  childStyle | SS_LEFT, statX + statGap*4, y, 110, 25,
                   m_mainWindow, nullptr, m_hInstance, nullptr);
     m_techLabel = CreateWindowW(L"STATIC", L"0/100",
-                                childStyle | SS_LEFT, x + 690, y, 60, 20,
+                                childStyle | SS_LEFT, statX + statGap*4 + 120, y, 80, 25,
                                 m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_techLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
     // Resources row
-    y = 140;
+    y = 70; // Second row
     HWND hFoodTitle = CreateWindowW(L"STATIC", L"Еда:",
-                  childStyle | SS_LEFT, x, y, 40, 20,
+                  childStyle | SS_LEFT, statX, y, 60, 25,
                   m_mainWindow, nullptr, m_hInstance, nullptr);
     m_foodLabel = CreateWindowW(L"STATIC", L"100",
-                                 childStyle | SS_LEFT, x + 50, y, 60, 20,
+                                 childStyle | SS_LEFT, statX + 70, y, 100, 25,
                                  m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_foodLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
     HWND hMoneyTitle = CreateWindowW(L"STATIC", L"Деньги:",
-                  childStyle | SS_LEFT, x + 130, y, 60, 20,
+                  childStyle | SS_LEFT, statX + statGap, y, 80, 25,
                   m_mainWindow, nullptr, m_hInstance, nullptr);
     m_moneyLabel = CreateWindowW(L"STATIC", L"500",
-                                 childStyle | SS_LEFT, x + 200, y, 60, 20,
+                                 childStyle | SS_LEFT, statX + statGap + 90, y, 100, 25,
                                  m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_moneyLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
     HWND hEnergyTitle = CreateWindowW(L"STATIC", L"Энергия:",
-                  childStyle | SS_LEFT, x + 280, y, 60, 20,
+                  childStyle | SS_LEFT, statX + statGap*2, y, 90, 25,
                   m_mainWindow, nullptr, m_hInstance, nullptr);
     m_energyLabel = CreateWindowW(L"STATIC", L"50",
-                                   childStyle | SS_LEFT, x + 350, y, 60, 20,
+                                   childStyle | SS_LEFT, statX + statGap*2 + 100, y, 100, 25,
                                    m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_energyLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
     HWND hMatTitle = CreateWindowW(L"STATIC", L"Материалы:",
-                  childStyle | SS_LEFT, x + 430, y, 80, 20,
+                  childStyle | SS_LEFT, statX + statGap*3, y, 110, 25,
                   m_mainWindow, nullptr, m_hInstance, nullptr);
     m_materialsLabel = CreateWindowW(L"STATIC", L"100",
-                                       childStyle | SS_LEFT, x + 520, y, 60, 20,
+                                       childStyle | SS_LEFT, statX + statGap*3 + 120, y, 100, 25,
                                        m_mainWindow, nullptr, m_hInstance, nullptr);
     SendMessageW(m_materialsLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
-    // Technologies List
-    y = 180;
-    HWND hTechListTitle = CreateWindowW(L"STATIC", L"Доступные технологии:",
-                  childStyle | SS_LEFT, x, y - 25, 280, 20,
+    // --- CITY MAP VISUALIZER ---
+    // Center Column
+    int mapX = 390;
+    int mapY = 160;
+    int mapW = 1140;
+    int mapH = 750;
+
+    HWND hMapTitle = CreateWindowW(L"STATIC", L"Вид поселения:",
+                  childStyle | SS_LEFT, mapX, mapY - 30, 200, 25,
                   m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hMapTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
+    
+    s_hCityMap = CreateWindowW(L"CityMapClass", nullptr,
+                               WS_VISIBLE | WS_CHILD | WS_BORDER,
+                               mapX, mapY, mapW, mapH,
+                               m_mainWindow, nullptr, m_hInstance, nullptr);
+    SetTimer(s_hCityMap, 1, 50, nullptr); // Animation timer
+
+    // Setup Map Tooltip
+    s_hMapTooltip = CreateWindowExW(0, TOOLTIPS_CLASSW, nullptr,
+                                    WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+                                    CW_USEDEFAULT, CW_USEDEFAULT,
+                                    CW_USEDEFAULT, CW_USEDEFAULT,
+                                    s_hCityMap, nullptr, m_hInstance, nullptr);
+    TOOLINFOW tiMap = { 0 };
+    tiMap.cbSize = sizeof(TOOLINFOW);
+    tiMap.uFlags = TTF_IDISHWND | TTF_TRANSPARENT | TTF_SUBCLASS;
+    tiMap.hwnd = s_hCityMap;
+    tiMap.uId = 1;
+    tiMap.lpszText = (LPWSTR)L"";
+    SendMessageW(s_hMapTooltip, TTM_ADDTOOLW, 0, (LPARAM)&tiMap);
+
+    // Technologies List
+    // Left Column
+    int techX = 20;
+    int techY = 160;
+    int techW = 350;
+    int techH = 750;
+
+    HWND hTechListTitle = CreateWindowW(L"STATIC", L"Доступные технологии:",
+                  childStyle | SS_LEFT, techX, techY - 30, 280, 25,
+                  m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hTechListTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
     
     m_techList = CreateWindowW(WC_LISTBOXW, nullptr,
                                 childStyle | WS_BORDER | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS,
-                                x, y, 350, 150,
+                                techX, techY, techW, techH,
                                 m_mainWindow, (HMENU)(INT_PTR)IDC_LIST_TECHS,
                                 m_hInstance, nullptr);
     SendMessageW(m_techList, WM_SETFONT, (WPARAM)hValueFont, 0);
@@ -511,64 +927,71 @@ void Win32Gui::createControls() {
     s_oldListProc = (WNDPROC)SetWindowLongPtrW(m_techList, GWLP_WNDPROC, (LONG_PTR)ListBoxSubclassProc);
 
     // Events panel (right side)
-    x = 400;
+    int evtX = 1550;
+    int evtY = 160;
+    int evtW = 350;
+    int evtH = 750;
+
     HWND hEventTitle = CreateWindowW(L"STATIC", L"События:",
-                  childStyle | SS_LEFT, x, y - 25, 180, 20,
+                  childStyle | SS_LEFT, evtX, evtY - 30, 180, 25,
                   m_mainWindow, nullptr, m_hInstance, nullptr);
+    SendMessageW(hEventTitle, WM_SETFONT, (WPARAM)hLabelFont, 0);
 
     m_eventLabel = CreateWindowW(L"EDIT", L"Нажмите 'Следующий ход' для начала игры!",
                                   childStyle | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
-                                  x, y, 350, 150,
+                                  evtX, evtY, evtW, evtH,
                                   m_mainWindow, nullptr,
                                   m_hInstance, nullptr);
     SendMessageW(m_eventLabel, WM_SETFONT, (WPARAM)hValueFont, 0);
 
     // Action Buttons row
-    y = 350;
-    x = 20;
+    int btnY = 950;
+    int btnX = 390;
 
     m_nextTurnBtn = CreateWindowW(L"BUTTON", L"Следующий ход",
-                                   btnStyle, x, y, 150, 55,
+                                   btnStyle, btnX, btnY, 200, 60,
                                    m_mainWindow, (HMENU)(INT_PTR)IDC_BTN_NEXT,
                                    m_hInstance, nullptr);
     SendMessageW(m_nextTurnBtn, WM_SETFONT, (WPARAM)hBtnFont, 0);
-    x += 160;
+    btnX += 220;
 
     m_investBtn = CreateWindowW(L"BUTTON", L"Инвестировать",
-                                 btnStyle, x, y, 140, 45,
+                                 btnStyle, btnX, btnY, 180, 60,
                                  m_mainWindow, (HMENU)(INT_PTR)IDC_BTN_INVEST,
                                  m_hInstance, nullptr);
     SendMessageW(m_investBtn, WM_SETFONT, (WPARAM)hBtnFont, 0);
-    x += 150;
+    btnX += 200;
 
     m_researchBtn = CreateWindowW(L"BUTTON", L"Исследовать",
-                                   btnStyle, x, y, 140, 45,
+                                   btnStyle, btnX, btnY, 180, 60,
                                    m_mainWindow, (HMENU)(INT_PTR)IDC_BTN_RESEARCH,
                                    m_hInstance, nullptr);
     SendMessageW(m_researchBtn, WM_SETFONT, (WPARAM)hBtnFont, 0);
-    x += 150;
+    
+    // System buttons on the right
+    btnX = 1550;
 
     HFONT hSmallBtnFont = CreateFontW(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Segoe UI");
     m_saveBtn = CreateWindowW(L"BUTTON", L"Сохранить",
-                               btnStyle, x, y, 100, 35,
+                               btnStyle, btnX, btnY, 160, 40,
                                m_mainWindow, (HMENU)(INT_PTR)IDC_BTN_SAVE,
                                m_hInstance, nullptr);
     SendMessageW(m_saveBtn, WM_SETFONT, (WPARAM)hSmallBtnFont, 0);
 
     m_loadBtn = CreateWindowW(L"BUTTON", L"Загрузить",
-                               btnStyle, x + 110, y, 100, 35,
+                               btnStyle, btnX + 170, btnY, 160, 40,
                                m_mainWindow, (HMENU)(INT_PTR)IDC_BTN_LOAD,
                                m_hInstance, nullptr);
     SendMessageW(m_loadBtn, WM_SETFONT, (WPARAM)hSmallBtnFont, 0);
 
     m_helpBtn = CreateWindowW(L"BUTTON", L"Помощь",
-                               btnStyle, x, y + 40, 100, 35,
+                               btnStyle, btnX, btnY + 50, 160, 40,
                                m_mainWindow, (HMENU)(INT_PTR)IDC_BTN_HELP,
                                m_hInstance, nullptr);
     SendMessageW(m_helpBtn, WM_SETFONT, (WPARAM)hSmallBtnFont, 0);
 
     m_quitBtn = CreateWindowW(L"BUTTON", L"Выход",
-                              btnStyle, x + 110, y + 40, 100, 35,
+                              btnStyle, btnX + 170, btnY + 50, 160, 40,
                               m_mainWindow, (HMENU)(INT_PTR)IDC_BTN_QUIT,
                               m_hInstance, nullptr);
     SendMessageW(m_quitBtn, WM_SETFONT, (WPARAM)hSmallBtnFont, 0);
@@ -579,6 +1002,7 @@ void Win32Gui::updateAllUI() {
     updateResources();
     updateTechTree();
     updateEra();
+    if(m_civ) UpdateCityMap(*m_civ);
 }
 
 void Win32Gui::updateStats() {
@@ -708,6 +1132,35 @@ void Win32Gui::updateEra() {
     SetWindowTextW(m_eraLabel, toWStr(eraToString(m_civ->getCurrentEra())).c_str());
 }
 
+static void ApplyCityBonuses(Civilization* civ) {
+    if (!civ) return;
+    
+    int housing = 50; // Base housing from Town Hall
+    double food = 0, money = 0, mat = 0, energy = 0, mil = 0;
+    
+    for (const auto& e : s_cityEntities) {
+        if (e.type == 1 && e.buildingDefIdx >= 0) {
+            const auto& def = s_buildingDefs[e.buildingDefIdx];
+            housing += def.popCapAdd;
+            food += def.foodAdd;
+            money += def.moneyAdd;
+            mat += def.materialsAdd;
+            energy += def.energyAdd;
+            mil += def.militaryAdd;
+        }
+    }
+    
+    civ->getResources().addResource(ResourceType::Food, food);
+    civ->getResources().addResource(ResourceType::Money, money);
+    civ->getResources().addResource(ResourceType::Materials, mat);
+    civ->getResources().addResource(ResourceType::Energy, energy);
+    civ->modifyMilitary(mil);
+    
+    if (civ->getPopulation() > housing) {
+        civ->modifyPopulation(housing - civ->getPopulation());
+    }
+}
+
 void Win32Gui::onNextTurn() {
     if (!m_civ) {
         m_difficulty = AskDifficulty(m_hInstance, m_mainWindow);
@@ -717,6 +1170,7 @@ void Win32Gui::onNextTurn() {
         m_events->init(m_difficulty);
         s_activeCiv = m_civ.get();
         updateEra();
+        InitCityMap();
         updateResources();
     }
 
@@ -725,6 +1179,8 @@ void Win32Gui::onNextTurn() {
     m_civ->applyEvent(event);
     m_civ->processTurn();
 
+    ApplyCityBonuses(m_civ.get());
+    UpdateCityMap(*m_civ);
     updateAllUI(); // Update stats first, so we don't overwrite event text later
 
     // Update events display with full info (like console version)
@@ -956,6 +1412,7 @@ void Win32Gui::onLoad() {
         updateAllUI();
         s_activeCiv = m_civ.get();
         updateEvents(); // Explicitly update events log on load
+        UpdateCityMap(*m_civ);
     }
 }
 
