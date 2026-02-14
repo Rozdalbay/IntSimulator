@@ -241,9 +241,7 @@ void Display::showHelp() const {
     std::cout << u8"  Проведите цивилизацию от Каменного века до Космической эры!\n\n";
 
     std::cout << ColorOutput::bold(u8"  УСЛОВИЯ ПОБЕДЫ:\n");
-    std::cout << "  " << ColorOutput::green("*") << u8" Освоение космоса    - Максимальный уровень ветки Космос\n";
-    std::cout << "  " << ColorOutput::green("*") << u8" Экон. стабильность  - Стабильная экономика 50 ходов подряд\n";
-    std::cout << "  " << ColorOutput::green("*") << u8" Техн. превосходство - Общий уровень технологий 100\n\n";
+    std::cout << "  " << ColorOutput::green("*") << u8" Космическая эра     - Достигнуть эпохи освоения космоса\n\n";
 
     std::cout << ColorOutput::bold(u8"  УСЛОВИЯ ПОРАЖЕНИЯ:\n");
     std::cout << "  " << ColorOutput::red("x") << u8" Население достигло 0\n";

@@ -114,14 +114,9 @@ GameResult Civilization::checkGameResult() const {
     }
 
     // Victory conditions
-    if (m_tech.getSpaceProgress() >= 100.0) {
+    // Победа присуждается сразу при достижении Космической эры (уровень технологий >= 90)
+    if (getCurrentEra() == Era::Space) {
         return GameResult::VictorySpace;
-    }
-    if (m_stableEconomyTurns >= VICTORY_STABLE_ECONOMY_TURNS) {
-        return GameResult::VictoryEconomy;
-    }
-    if (m_tech.getOverallTechLevel() >= TECH_LEVEL_MAX) {
-        return GameResult::VictoryTech;
     }
 
     return GameResult::InProgress;

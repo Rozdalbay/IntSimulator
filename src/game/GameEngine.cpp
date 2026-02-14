@@ -298,6 +298,11 @@ void GameEngine::handleSaveGame() {
 
 void GameEngine::checkEndConditions() {
     m_result = m_civ->checkGameResult();
+    if (m_result == GameResult::InProgress) {
+        if (m_civ->getCurrentEra() == Era::Space) {
+            m_result = GameResult::VictorySpace;
+        }
+    }
 }
 
 void GameEngine::showEndScreen() {
