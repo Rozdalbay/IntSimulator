@@ -89,13 +89,14 @@ double ResourceManager::getTotalSurplus() const {
 }
 
 void ResourceManager::updateProduction(int population, int techLevel) {
-    double popFactor = std::sqrt(static_cast<double>(population)) * 0.1;
+    // Изменено с sqrt на линейную зависимость, чтобы экономика не рушилась при росте населения
+    double popFactor = static_cast<double>(population) * 0.01; 
     double techFactor = 1.0 + techLevel * 0.02;
 
-    m_production[static_cast<size_t>(ResourceType::Food)]      = popFactor * 15.0 * techFactor;
-    m_production[static_cast<size_t>(ResourceType::Money)]     = popFactor * 10.0 * techFactor;
-    m_production[static_cast<size_t>(ResourceType::Energy)]    = popFactor * 5.0 * techFactor;
-    m_production[static_cast<size_t>(ResourceType::Materials)] = popFactor * 8.0 * techFactor;
+    m_production[static_cast<size_t>(ResourceType::Food)]      = popFactor * 1.5 * techFactor; // База 1.5 > Потр 1.2
+    m_production[static_cast<size_t>(ResourceType::Money)]     = popFactor * 1.1 * techFactor; // База 1.1 > Потр 0.8
+    m_production[static_cast<size_t>(ResourceType::Energy)]    = popFactor * 0.8 * techFactor; // База 0.8 > Потр 0.5
+    m_production[static_cast<size_t>(ResourceType::Materials)] = popFactor * 0.6 * techFactor; // База 0.6 > Потр 0.3
 }
 
 void ResourceManager::updateConsumption(int population) {

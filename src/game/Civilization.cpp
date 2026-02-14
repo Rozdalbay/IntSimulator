@@ -162,16 +162,23 @@ double Civilization::getGrowthRate() const {
 }
 
 void Civilization::updateEcology() {
+    // В ранние эпохи (до Индустриальной) экология не падает, так как нет заводов
+    if (getCurrentEra() < Era::Industrial) {
+        m_ecology += 0.5;
+        m_ecology = Utils::clamp(m_ecology, 0.0, 100.0);
+        return;
+    }
+
     // Industry hurts ecology
     int industryLevel = m_tech.getBranchLevel(TechBranch::Industry);
-    double industrialDamage = industryLevel * 0.15;
+    double industrialDamage = industryLevel * 0.10;
 
     // Science helps ecology (green tech)
     int scienceLevel = m_tech.getBranchLevel(TechBranch::Science);
-    double scienceHelp = scienceLevel * 0.08;
+    double scienceHelp = scienceLevel * 0.15;
 
     // Population pressure
-    double popPressure = std::log10(std::max(1, m_population)) * 0.3;
+    double popPressure = std::log10(std::max(1, m_population)) * 0.15;
 
     double ecologyChange = scienceHelp - industrialDamage - popPressure + 0.5;
     m_ecology += ecologyChange;

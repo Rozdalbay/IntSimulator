@@ -31,98 +31,14 @@ double EventSystem::getDifficultyMultiplier() const {
 }
 
 void EventSystem::buildEventPool() {
+    // Пул событий теперь генерируется динамически в getEventsForEra
     m_eventPool.clear();
+}
 
-    // === ЭПИДЕМИИ ===
-    {
-        GameEvent e;
-        e.name = u8"Вспышка чумы";
-        e.description = u8"Смертельная чума охватила население!";
-        e.type = EventType::Epidemic;
-        e.populationMultiplier = 0.85;
-        e.happinessEffect = -15.0;
-        e.economyEffect = -50.0;
-        m_eventPool.push_back(e);
-    }
-    {
-        GameEvent e;
-        e.name = u8"Сезонная болезнь";
-        e.description = u8"Сезонная болезнь снижает производительность.";
-        e.type = EventType::Epidemic;
-        e.populationMultiplier = 0.97;
-        e.happinessEffect = -5.0;
-        e.foodEffect = -20.0;
-        m_eventPool.push_back(e);
-    }
+std::vector<GameEvent> EventSystem::getEventsForEra(Era era) const {
+    std::vector<GameEvent> pool;
 
-    // === ЭКОНОМИЧЕСКИЙ КРИЗИС ===
-    {
-        GameEvent e;
-        e.name = u8"Крах рынка";
-        e.description = u8"Экономика рухнула! Рынки в хаосе.";
-        e.type = EventType::EconomicCrisis;
-        e.economyEffect = -200.0;
-        e.happinessEffect = -20.0;
-        m_eventPool.push_back(e);
-    }
-    {
-        GameEvent e;
-        e.name = u8"Нарушение торговли";
-        e.description = u8"Торговые пути нарушены, возникает дефицит.";
-        e.type = EventType::EconomicCrisis;
-        e.economyEffect = -80.0;
-        e.foodEffect = -30.0;
-        e.materialsEffect = -20.0;
-        m_eventPool.push_back(e);
-    }
-
-    // === ТЕХНОЛОГИЧЕСКИЙ ПРОРЫВ ===
-    {
-        GameEvent e;
-        e.name = u8"Научное открытие";
-        e.description = u8"Гениальный учёный совершил прорывное открытие!";
-        e.type = EventType::TechBreakthrough;
-        e.techBoost = 3;
-        e.happinessEffect = 10.0;
-        m_eventPool.push_back(e);
-    }
-    {
-        GameEvent e;
-        e.name = u8"Волна инноваций";
-        e.description = u8"Волна инноваций охватила цивилизацию!";
-        e.type = EventType::TechBreakthrough;
-        e.techBoost = 2;
-        e.economyEffect = 50.0;
-        e.materialsEffect = 30.0;
-        m_eventPool.push_back(e);
-    }
-
-    // === ВОЙНА ===
-    {
-        GameEvent e;
-        e.name = u8"Пограничный конфликт";
-        e.description = u8"Соседнее племя атакует наши границы!";
-        e.type = EventType::War;
-        e.populationMultiplier = 0.92;
-        e.militaryEffect = -10.0;
-        e.happinessEffect = -10.0;
-        e.economyEffect = -60.0;
-        m_eventPool.push_back(e);
-    }
-    {
-        GameEvent e;
-        e.name = u8"Полномасштабная война";
-        e.description = u8"Началась война! Ресурсы направлены на армию.";
-        e.type = EventType::War;
-        e.populationMultiplier = 0.80;
-        e.militaryEffect = 15.0;
-        e.happinessEffect = -25.0;
-        e.economyEffect = -150.0;
-        e.materialsEffect = -50.0;
-        m_eventPool.push_back(e);
-    }
-
-    // === ПРИРОДНАЯ КАТАСТРОФА ===
+    // === УНИВЕРСАЛЬНЫЕ СОБЫТИЯ (Все эпохи) ===
     {
         GameEvent e;
         e.name = u8"Землетрясение";
@@ -132,7 +48,7 @@ void EventSystem::buildEventPool() {
         e.materialsEffect = -80.0;
         e.happinessEffect = -15.0;
         e.ecologyEffect = -5.0;
-        m_eventPool.push_back(e);
+        pool.push_back(e);
     }
     {
         GameEvent e;
@@ -143,7 +59,7 @@ void EventSystem::buildEventPool() {
         e.populationMultiplier = 0.93;
         e.ecologyEffect = -8.0;
         e.happinessEffect = -12.0;
-        m_eventPool.push_back(e);
+        pool.push_back(e);
     }
     {
         GameEvent e;
@@ -153,68 +69,162 @@ void EventSystem::buildEventPool() {
         e.foodEffect = -80.0;
         e.happinessEffect = -10.0;
         e.ecologyEffect = -3.0;
-        m_eventPool.push_back(e);
-    }
-
-    // === РЕВОЛЮЦИЯ ===
-    {
-        GameEvent e;
-        e.name = u8"Народное восстание";
-        e.description = u8"Народ требует перемен! Началась революция.";
-        e.type = EventType::Revolution;
-        e.populationMultiplier = 0.95;
-        e.happinessEffect = 15.0;
-        e.militaryEffect = -15.0;
-        e.economyEffect = -100.0;
-        m_eventPool.push_back(e);
-    }
-    {
-        GameEvent e;
-        e.name = u8"Реформаторское движение";
-        e.description = u8"Мирное реформаторское движение улучшило управление.";
-        e.type = EventType::Revolution;
-        e.happinessEffect = 20.0;
-        e.economyEffect = 30.0;
-        m_eventPool.push_back(e);
-    }
-
-    // === ЗОЛОТОЙ ВЕК ===
-    {
-        GameEvent e;
-        e.name = u8"Золотой век";
-        e.description = u8"Процветание! Цивилизация вступила в золотой век.";
-        e.type = EventType::GoldenAge;
-        e.happinessEffect = 25.0;
-        e.economyEffect = 150.0;
-        e.foodEffect = 50.0;
-        e.energyEffect = 30.0;
-        e.populationMultiplier = 1.05;
-        m_eventPool.push_back(e);
-    }
-    {
-        GameEvent e;
-        e.name = u8"Культурный ренессанс";
-        e.description = u8"Искусство и культура расцветают, вдохновляя народ!";
-        e.type = EventType::GoldenAge;
-        e.happinessEffect = 20.0;
-        e.techBoost = 1;
-        e.economyEffect = 80.0;
-        m_eventPool.push_back(e);
+        pool.push_back(e);
     }
     {
         GameEvent e;
         e.name = u8"Богатый урожай";
-        e.description = u8"Исключительный урожай наполнил амбары!";
+        e.description = (era <= Era::IronAge) ? u8"Природа была щедра к нам в этом году." : u8"Исключительный урожай наполнил амбары!";
         e.type = EventType::GoldenAge;
         e.foodEffect = 120.0;
         e.happinessEffect = 10.0;
         e.populationMultiplier = 1.03;
-        m_eventPool.push_back(e);
+        pool.push_back(e);
     }
-}
 
-std::vector<GameEvent> EventSystem::getEventsForEra(Era /*era*/) const {
-    return m_eventPool;
+    // === РАННИЕ ЭПОХИ (Каменный, Бронзовый, Железный) ===
+    if (era <= Era::IronAge) {
+        {
+            GameEvent e;
+            e.name = u8"Набег диких зверей";
+            e.description = u8"Стая хищников напала на поселение.";
+            e.type = EventType::NaturalDisaster;
+            e.populationMultiplier = 0.98;
+            e.foodEffect = -30.0;
+            e.happinessEffect = -5.0;
+            pool.push_back(e);
+        }
+        {
+            GameEvent e;
+            e.name = u8"Мудрость старейшин";
+            e.description = u8"Старейшины передали важные знания новому поколению.";
+            e.type = EventType::TechBreakthrough;
+            e.techBoost = 2;
+            e.happinessEffect = 5.0;
+            pool.push_back(e);
+        }
+        {
+            GameEvent e;
+            e.name = u8"Племенной конфликт";
+            e.description = u8"Стычка с соседним племенем за ресурсы.";
+            e.type = EventType::War;
+            e.populationMultiplier = 0.95;
+            e.militaryEffect = -5.0;
+            e.happinessEffect = -5.0;
+            e.economyEffect = -10.0;
+            pool.push_back(e);
+        }
+    }
+
+    // === СРЕДНИЕ ЭПОХИ (Средневековье, Возрождение) ===
+    if (era >= Era::Medieval && era <= Era::Renaissance) {
+        {
+            GameEvent e;
+            e.name = u8"Вспышка чумы";
+            e.description = u8"Смертельная болезнь распространяется по городам!";
+            e.type = EventType::Epidemic;
+            e.populationMultiplier = 0.85;
+            e.happinessEffect = -20.0;
+            e.economyEffect = -50.0;
+            pool.push_back(e);
+        }
+        {
+            GameEvent e;
+            e.name = u8"Рыцарский турнир";
+            e.description = u8"Турнир поднял боевой дух и настроение народа.";
+            e.type = EventType::GoldenAge;
+            e.happinessEffect = 15.0;
+            e.militaryEffect = 5.0;
+            e.economyEffect = -20.0;
+            pool.push_back(e);
+        }
+        {
+            GameEvent e;
+            e.name = u8"Крестьянское восстание";
+            e.description = u8"Крестьяне бунтуют против высоких налогов.";
+            e.type = EventType::Revolution;
+            e.populationMultiplier = 0.95;
+            e.happinessEffect = -15.0;
+            e.economyEffect = -40.0;
+            pool.push_back(e);
+        }
+    }
+
+    // === ИНДУСТРИАЛЬНЫЕ И ПОЗДНИЕ ЭПОХИ (Индустриальная+) ===
+    if (era >= Era::Industrial) {
+        {
+            GameEvent e;
+            e.name = u8"Промышленный бум";
+            e.description = u8"Рост производства благодаря новым фабрикам.";
+            e.type = EventType::GoldenAge;
+            e.economyEffect = 100.0;
+            e.materialsEffect = 50.0;
+            e.ecologyEffect = -10.0;
+            pool.push_back(e);
+        }
+        {
+            GameEvent e;
+            e.name = u8"Забастовка рабочих";
+            e.description = u8"Рабочие требуют лучших условий труда.";
+            e.type = EventType::Revolution;
+            e.economyEffect = -80.0;
+            e.materialsEffect = -40.0;
+            e.happinessEffect = -10.0;
+            pool.push_back(e);
+        }
+        {
+            GameEvent e;
+            e.name = u8"Научное открытие";
+            e.description = u8"Ученые совершили прорыв в лабораториях!";
+            e.type = EventType::TechBreakthrough;
+            e.techBoost = 4;
+            e.happinessEffect = 10.0;
+            pool.push_back(e);
+        }
+        {
+            GameEvent e;
+            e.name = u8"Крах фондового рынка";
+            e.description = u8"Финансовый пузырь лопнул, экономика в рецессии.";
+            e.type = EventType::EconomicCrisis;
+            e.economyEffect = -200.0;
+            e.happinessEffect = -20.0;
+            pool.push_back(e);
+        }
+    }
+
+    // === КОСМИЧЕСКАЯ ЭРА ===
+    if (era == Era::Space) {
+        {
+            GameEvent e;
+            e.name = u8"Контакт с внеземной жизнью";
+            e.description = u8"Мы получили сигнал от другой цивилизации!";
+            e.type = EventType::TechBreakthrough;
+            e.techBoost = 10;
+            e.happinessEffect = 25.0;
+            pool.push_back(e);
+        }
+        {
+            GameEvent e;
+            e.name = u8"Авария на орбитальной станции";
+            e.description = u8"Критический сбой систем жизнеобеспечения.";
+            e.type = EventType::NaturalDisaster;
+            e.materialsEffect = -100.0;
+            e.economyEffect = -150.0;
+            e.happinessEffect = -10.0;
+            pool.push_back(e);
+        }
+        {
+            GameEvent e;
+            e.name = u8"Ресурсы с астероидов";
+            e.description = u8"Успешная добыча редких металлов в космосе.";
+            e.type = EventType::GoldenAge;
+            e.materialsEffect = 200.0;
+            e.economyEffect = 100.0;
+            pool.push_back(e);
+        }
+    }
+
+    return pool;
 }
 
 GameEvent EventSystem::generateEvent(Era currentEra, int /*turn*/) const {
